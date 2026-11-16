@@ -159,6 +159,8 @@ a.btn { color: var(--gold); text-decoration: none; display: inline-flex; align-i
 .wemb { --sz: 54px; width: var(--sz); height: var(--sz); flex: none; border-radius: 14px; display: grid; place-items: center; color: var(--sc);
   background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--sc) 30%, var(--panel2)) 0%, var(--panel) 75%); border: 2px solid color-mix(in srgb, var(--sc) 60%, transparent); }
 .wemb svg { width: 62%; height: 62%; }
+.wemb { position: relative; }
+.wemb img.gpic { position: absolute; inset: 0; object-fit: contain; background: var(--panel2); }
 .wemb.r5 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--gold); }
 .wemb.r4 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px #a888e0; }
 .wemb.r3 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px #6fa3d8; }
@@ -789,7 +791,7 @@ function gearTiles(c, a) {
   const at = SLOT_ORDER.map(s => { const x = bySlot[s];
     if (!x) return `<div class="gtile empty">${icon(SLOTSVG[s])}${s}: leer oder unbekannt</div>`;
     const sc = artScore(x);
-    return `<div class="gtile art" style="--sc:${setColor(x.set)}"><div class="gh">${PICS()["s:" + x.set] ? `<span class="wemb pic" style="--sz:40px;--sc:${setColor(x.set)}">${picImg("s:" + x.set, setName(x.set))}</span>` : icon(SLOTSVG[s])}<div style="min-width:0"><div class="gm">${s} <span class="pill">+${x.lvl}</span></div><div class="note">${esc(setName(x.set))}</div></div></div>
+    return `<div class="gtile art" style="--sc:${setColor(x.set)}"><div class="gh">${PICS()["s:" + x.set] ? `<span class="wemb pic" style="--sz:40px;--sc:${setColor(x.set)}">${picImg("s:" + x.set, setName(x.set))}</span>` : ART[String(x.set)] ? `<span class="wemb" style="--sz:40px;--sc:${setColor(x.set)}">${icon(SLOTSVG[s])}${setImg(x.set, s, "gpic")}</span>` : icon(SLOTSVG[s])}<div style="min-width:0"><div class="gm">${s} <span class="pill">+${x.lvl}</span></div><div class="note">${esc(setName(x.set))}</div></div></div>
       <div class="gs"><span style="color:var(--fg);font-weight:700">${esc(x.main)}</span><b>${x.mainv ? statVal(x.main, x.mainv) : ""}</b>${x.subs.map(q => `<span>${esc(q[0])}</span><b>${statVal(q[0], q[1])}</b>`).join("")}</div>
       <span class="pill" style="color:${sc.col};align-self:flex-start">${sc.label}</span></div>`; }).join("");
   const sets = setSummary(a.arts);
@@ -858,27 +860,44 @@ function artScore(x) {
 /* ---------- Waffen ---------- */
 /* ---------- Bilder, Embleme, Waffen-Details ---------- */
 const PICS = () => (acct.pics && acct.pics.map) || {};
-/** Enka icon names by character id (from store/characters.json). Filled once at start. */
-const ENKA_ICONS = {};
-const ENKA_UI = "https://enka.network/ui/";
+/* Spiel-Icons: Dateinamen sind fest hinterlegt (Stand 7.2), damit kein Bild von einer Liste abhängt, die erst nachgeladen wird.
+   Zuerst wird Enka versucht, bei Fehler Yatta (Project Amber), sonst bleibt das SVG-Abzeichen. */
+const ICON_C = {}, ICON_W = {};
+"10000002:Ayaka 10000003:Qin 10000005:PlayerBoy 10000006:Lisa 10000007:PlayerGirl 10000014:Barbara 10000015:Kaeya 10000016:Diluc 10000020:Razor 10000021:Ambor 10000022:Venti 10000023:Xiangling 10000024:Beidou 10000025:Xingqiu 10000026:Xiao 10000027:Ningguang 10000029:Klee 10000030:Zhongli 10000031:Fischl 10000032:Bennett 10000033:Tartaglia 10000034:Noel 10000035:Qiqi 10000036:Chongyun 10000037:Ganyu 10000038:Albedo 10000039:Diona 10000041:Mona 10000042:Keqing 10000043:Sucrose 10000044:Xinyan 10000045:Rosaria 10000046:Hutao 10000047:Kazuha 10000048:Feiyan 10000049:Yoimiya 10000050:Tohma 10000051:Eula 10000052:Shougun 10000053:Sayu 10000054:Kokomi 10000055:Gorou 10000056:Sara 10000057:Itto 10000058:Yae 10000059:Heizo 10000060:Yelan 10000061:Momoka 10000062:Aloy 10000063:Shenhe 10000064:Yunjin 10000065:Shinobu 10000066:Ayato 10000067:Collei 10000068:Dori 10000069:Tighnari 10000070:Nilou 10000071:Cyno 10000072:Candace 10000073:Nahida 10000074:Layla 10000075:Wanderer 10000076:Faruzan 10000077:Yaoyao 10000078:Alhatham 10000079:Dehya 10000080:Mika 10000081:Kaveh 10000082:Baizhuer 10000083:Linette 10000084:Liney 10000085:Freminet 10000086:Wriothesley 10000087:Neuvillette 10000088:Charlotte 10000089:Furina 10000090:Chevreuse 10000091:Navia 10000092:Gaming 10000093:Liuyun 10000094:Chiori 10000095:Sigewinne 10000096:Arlecchino 10000097:Sethos 10000098:Clorinde 10000099:Emilie 10000100:Kachina 10000101:Kinich 10000102:Mualani 10000103:Xilonen 10000104:Chasca 10000105:Olorun 10000106:Mavuika 10000107:Citlali 10000108:Lanyan 10000109:Mizuki 10000110:Iansan 10000111:Varesa 10000112:Escoffier 10000113:Ifa 10000114:SkirkNew 10000115:Dahlia 10000116:Ineffa 10000119:Lauma 10000120:Flins 10000121:Aino 10000122:Nefer 10000123:Durin 10000124:Jahoda 10000125:Columbina 10000126:Zibai 10000127:Illuga 10000128:Varka 10000129:Lohen 10000130:Linnea 10000131:Nicole 10000132:Prune 10000133:MarionetteNew 10000136:Mitya 10000137:Valeriy 10000140:Vodyanitsa 10000143:Vesna 10000148:Alyosha 10000150:Odette".split(" ").forEach(x => { const [i, n] = x.split(":"); ICON_C[i] = n; });
+"11101:Sword_Blunt 11201:Sword_Silver 11301:Sword_Steel 11302:Sword_Dawn 11303:Sword_Traveler 11304:Sword_Darker 11305:Sword_Sashimi 11306:Sword_Mitsurugi 11401:Sword_Zephyrus 11402:Sword_Troupe 11403:Sword_Fossil 11404:Sword_Theocrat 11405:Sword_Rockkiller 11406:Sword_Proto 11407:Sword_Exotic 11408:Sword_Blackrock 11409:Sword_Bloodstained 11410:Sword_Outlaw 11412:Sword_Psalmus 11413:Sword_Magnum 11414:Sword_Bakufu 11415:Sword_Opus 11416:Sword_Youtou 11419:Sword_Youtou 11420:Sword_Youtou 11421:Sword_Youtou 11417:Sword_Arakalari 11418:Sword_Pleroma 11422:Sword_Kasabouzu 11424:Sword_Boreas 11425:Sword_Vorpal 11426:Sword_Machination 11427:Sword_Mechanic 11428:Sword_Purewill 11430:Sword_Umpakati 11431:Sword_Isikhulu 11432:Sword_SacrificialNgombe 11433:Sword_Ilmarinen 11434:Sword_Miekka 11435:Sword_SerpentTooth 11436:Sword_GlintstoneSword 11437:Sword_SpikedStake 11438:Sword_Fajian 11501:Sword_Falcon 11502:Sword_Dvalin 11503:Sword_Widsith 11504:Sword_Kunwu 11505:Sword_Morax 11509:Sword_Narukami 11510:Sword_Amenoma 11511:Sword_Deshret 11512:Sword_Ayus 11513:Sword_Regalis 11514:Sword_Needle 11515:Sword_Estoc 11516:Sword_XochitlsTube 11517:Sword_OuterSword 11518:Sword_Motsognir 11519:Sword_SilverwareSaw 11520:Sword_Swanlake 11521:Sword_WeaponQuestSnezhnaya 11522:Sword_Samosvist 12101:Claymore_Aniki 12201:Claymore_Oyaji 12301:Claymore_Glaive 12302:Claymore_Siegfry 12303:Claymore_Tin 12305:Claymore_Reasoning 12306:Claymore_Mitsurugi 12401:Claymore_Zephyrus 12402:Claymore_Troupe 12403:Claymore_Fossil 12404:Claymore_Theocrat 12405:Claymore_Perdue 12406:Claymore_Proto 12407:Claymore_Exotic 12408:Claymore_Blackrock 12409:Claymore_Kione 12410:Claymore_Lapis 12411:Claymore_Dragonfell 12412:Claymore_MillenniaTuna 12414:Claymore_Bakufu 12415:Claymore_Pleroma 12416:Claymore_Maria 12417:Claymore_Arakalari 12418:Claymore_Fleurfair 12424:Claymore_BeastTamer 12425:Claymore_Vorpal 12426:Claymore_Champion 12427:Claymore_Mechanic 12430:Claymore_Umpakati 12431:Claymore_Isikhulu 12432:Claymore_Polilith 12433:Claymore_Ilmarinen 12435:Claymore_EscapeWheel 12436:Claymore_GlintstoneClaymore 12501:Claymore_Dvalin 12502:Claymore_Wolfmound 12503:Claymore_Widsith 12504:Claymore_Kunwu 12510:Claymore_Itadorimaru 12511:Claymore_Deshret 12512:Claymore_GoldenVerdict 12513:Claymore_EmeraldSword 12514:Claymore_RadianceSword 12515:Claymore_EnsisAquilonis 12516:Claymore_CrystallineSword 13101:Pole_Gewalt 13201:Pole_Rod 13301:Pole_Ruby 13302:Pole_Halberd 13303:Pole_Noire 13401:Pole_Stardust 13402:Pole_Proto 13403:Pole_Exotic 13404:Pole_Blackrock 13405:Pole_Gladiator 13406:Pole_Lapis 13407:Pole_Zephyrus 13408:Pole_Theocrat 13409:Pole_Everfrost 13414:Pole_Bakufu 13415:Pole_Mori 13416:Pole_Maria 13417:Pole_Arakalari 13419:Pole_Windvane 13424:Pole_Shanty 13425:Pole_Vorpal 13426:Pole_Caduceus 13427:Pole_Mechanic 13430:Pole_Umpakati 13431:Pole_Isikhulu 13432:Pole_Aoandon 13433:Pole_Ilmarinen 13434:Pole_Krivule 13435:Pole_FaesCrystalle 13436:Pole_GlintstonePolearm 13501:Pole_Homa 13502:Pole_Dvalin 13504:Pole_Kunwu 13505:Pole_Morax 13507:Pole_Santika 13509:Pole_Narukami 13511:Pole_Deshret 13512:Pole_BloodMoon 13513:Pole_Muguet 13514:Pole_Trident 13515:Pole_Perdix 13516:Pole_TummaLyhty 13517:Pole_Carbine 14101:Catalyst_Apprentice 14201:Catalyst_Pocket 14301:Catalyst_Intro 14302:Catalyst_Pulpfic 14303:Catalyst_Lightnov 14304:Catalyst_Jade 14305:Catalyst_Phoney 14401:Catalyst_Zephyrus 14402:Catalyst_Troupe 14403:Catalyst_Fossil 14404:Catalyst_Theocrat 14405:Catalyst_Resurrection 14406:Catalyst_Proto 14407:Catalyst_Exotic 14408:Catalyst_Blackrock 14409:Catalyst_Truelens 14410:Catalyst_Outlaw 14412:Catalyst_Everfrost 14413:Catalyst_Ludiharpastum 14414:Catalyst_Bakufu 14415:Catalyst_Jyanome 14416:Catalyst_Pleroma 14417:Catalyst_Arakalari 14424:Catalyst_Yue 14425:Catalyst_Vorpal 14426:Catalyst_DandelionPoem 14427:Catalyst_ConchSprayer 14430:Catalyst_Umpakati 14431:Catalyst_Isikhulu 14432:Catalyst_SeeliesLute 14433:Catalyst_Ilmarinen 14434:Catalyst_Ziedas 14435:Catalyst_SandMemoria 14436:Catalyst_GlintstoneCatalyst 14437:Catalyst_FrostScepter 14501:Catalyst_Dvalin 14502:Catalyst_Fourwinds 14504:Catalyst_Kunwu 14505:Catalyst_Morax 14506:Catalyst_Kaleido 14509:Catalyst_Narukami 14511:Catalyst_Ayus 14512:Catalyst_Alaya 14513:Catalyst_Wheatley 14514:Catalyst_Iudex 14515:Catalyst_MountainGale 14516:Catalyst_MechaPufferfish 14517:Catalyst_Figurines 14518:Catalyst_SakuraFan 14519:Catalyst_VaresaTransformer 14520:Catalyst_MenulisRing 14521:Catalyst_Sistrum 14522:Catalyst_Brisingamen 14523:Catalyst_FairyGarden 14524:Catalyst_Bludnye 14525:Catalyst_Chernaya 15101:Bow_Hunters 15201:Bow_Old 15301:Bow_Crowfeather 15302:Bow_Arjuna 15303:Bow_Curve 15304:Bow_Sling 15305:Bow_Msg 15401:Bow_Zephyrus 15402:Bow_Troupe 15403:Bow_Fossil 15404:Bow_Theocrat 15405:Bow_Recluse 15406:Bow_Proto 15407:Bow_Exotic 15408:Bow_Blackrock 15409:Bow_Viridescent 15410:Bow_Outlaw 15411:Bow_Fallensun 15412:Bow_Nachtblind 15413:Bow_Fleurfair 15414:Bow_Bakufu 15415:Bow_Predator 15416:Bow_Maria 15417:Bow_Arakalari 15418:Bow_Fin 15419:Bow_Ibis 15424:Bow_Gurabad 15425:Bow_Vorpal 15426:Bow_Ultimatum 15427:Bow_Mechanic 15430:Bow_Umpakati 15431:Bow_Isikhulu 15432:Bow_Stinger 15433:Bow_Ilmarinen 15434:Bow_ElegguaBow 15435:Bow_ShatteredMirror 15436:Bow_GlintstoneBow 15437:Bow_Windtalker 15501:Bow_Dvalin 15502:Bow_Amos 15503:Bow_Widsith 15507:Bow_Worldbane 15508:Bow_Kirin 15509:Bow_Narukami 15511:Bow_Ayus 15512:Bow_Pledge 15513:Bow_Arcdange 15514:Bow_Qoyllorsnova 15515:Bow_Arianna 15516:Bow_Alkonost".split(" ").forEach(x => { const [i, n] = x.split(":"); ICON_W[i] = n; });
+const ENKA_ICONS = {}; // Ergänzung aus der Enka-Liste, falls ein neuer Charakter oben noch fehlt
+const ENKA_UI = "https://enka.network/ui/", YATTA_UI = "https://gi.yatta.moe/assets/UI/";
+const RELIC_SLOT = { Blume: 4, Feder: 2, Sanduhr: 5, Kelch: 1, Krone: 3 };
+const RELIC_ONE = { 15009: 1, 15010: 1, 15011: 1, 15013: 1 }; // Sets, die nur aus einer Krone bestehen
+/** Fehler beim Laden: einmal die zweite Quelle probieren, danach Bild entfernen (bzw. Farbpunkt zeigen). */
+function picFail(el) {
+  const a = el.dataset.alt;
+  if (a) { el.dataset.alt = ""; el.src = a; return; }
+  if (el.dataset.fb === "dot") el.outerHTML = "<i></i>"; else el.remove();
+}
+function gameImg(name, cls, sub, extra) {
+  return `<img${cls ? ` class="${cls}"` : ""} src="${ENKA_UI + name}.png" data-alt="${YATTA_UI + (sub || "") + name}.png" alt="" loading="lazy" onerror="picFail(this)"${extra || ""}>`;
+}
+function setIconName(id, slot) { return "UI_RelicIcon_" + id + "_" + (RELIC_ONE[id] ? 3 : (RELIC_SLOT[slot] || 4)); }
+function setImg(id, slot, cls, extra) { return ART[String(id)] ? gameImg(setIconName(id, slot), cls, "reliquary/", extra) : ""; }
+function weaponImg(w) { const n = ICON_W[w.id]; return n ? gameImg("UI_EquipIcon_" + n, "gpic") : ""; }
 function hue(s) { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 360; }
 const setColor = id => `hsl(${hue(id)} 60% 64%)`;
-function setChip(id, label) { const u = PICS()["s:" + id]; return `<span class="pill setpill" style="--sc:${setColor(id)}">${u ? `<img src="${esc(u)}" alt="" style="width:18px;height:18px;border-radius:4px;object-fit:cover">` : "<i></i>"}${esc(label || setName(id))}</span>`; }
+function setChip(id, label) { const u = PICS()["s:" + id]; const st = ' style="width:18px;height:18px;border-radius:4px;object-fit:cover"';
+  return `<span class="pill setpill" style="--sc:${setColor(id)}">${u ? `<img src="${esc(u)}" alt=""${st}>` : (setImg(id, "", "", st.replace("cover", "contain") + ' data-fb="dot"') || "<i></i>")}${esc(label || setName(id))}</span>`; }
 function picImg(key, alt) { const u = PICS()[key]; return u ? `<img src="${esc(u)}" alt="${esc(alt)}" loading="lazy">` : ""; }
-/* Reihenfolge: 1) eigenes hochgeladenes Bild, 2) Enka-Icon (automatisch), 3) lokaler Ordner "bilder/" (nur PC), sonst bleibt das SVG-Abzeichen. */
+/* Reihenfolge: 1) eigenes hochgeladenes Bild, 2) Spiel-Icon (automatisch), 3) lokaler Ordner "bilder/" (nur PC), sonst bleibt das SVG-Abzeichen. */
 function charPic(c) {
   const u = PICS()["c:" + c.k];
   if (u) return `<img class="lpic" src="${esc(u)}" alt="" loading="lazy">`;
-  const enka = enkaCharUrl(c);
-  if (enka) return `<img class="lpic" src="${esc(enka)}" alt="" loading="lazy" onerror="this.remove()">`;
+  const n = charIconName(c);
+  if (n) return gameImg(n, "lpic");
   return localPic(c);
 }
-function enkaCharUrl(c) {
+function charIconName(c) {
+  if (ICON_C[c.id]) return "UI_AvatarIcon_" + ICON_C[c.id];
   const side = ENKA_ICONS[c.id];
-  if (!side) return "";
-  // Face-Icon (ohne _Side_) sieht in den runden Avataren besser aus
-  const face = side.replace("_Side_", "_");
-  return ENKA_UI + face + ".png";
+  return side ? side.replace("_Side_", "_") : "";
 }
 function localPic(c) {
   if (!window.KOMPASS_LOCAL) return "";
@@ -919,7 +938,7 @@ function wPassive(w, r) {
 }
 function wEmblem(w, lg) {
   const img = picImg("w:" + w.k, w.n);
-  return `<span class="wemb r${w.r}${lg ? " lg" : ""}${img ? " pic" : ""}" aria-hidden="true" style="--sc:${setColor(w.k)}">${img || icon(WSVG[w.w] || "")}</span>`;
+  return `<span class="wemb r${w.r}${lg ? " lg" : ""}${img ? " pic" : ""}" aria-hidden="true" style="--sc:${setColor(w.k)}">${img || icon(WSVG[w.w] || "") + weaponImg(w)}</span>`;
 }
 function wearersOf() { const m = {}; Object.entries(acct.chars.map).forEach(([k, a]) => { if (a.own && a.w) (m[a.w] = m[a.w] || []).push(k); }); return m; }
 function weaponDrawer(k) {
@@ -1961,8 +1980,7 @@ function unmatchedBox() {
 }
 function picStats() {
   const own = DATA.chars.filter(c => PICS()["c:" + c.k]).length;
-  const enka = Object.keys(ENKA_ICONS).length;
-  return `${own} eigene Bilder · ${enka} Charaktere mit Enka-Icon (automatisch).`;
+  return `${own} eigene Bilder · Spiel-Icons für ${DATA.chars.filter(charIconName).length} Charaktere, ${DATA.weapons.filter(w => ICON_W[w.id]).length} Waffen und ${DATA.artifacts.length} Artefakt-Sets (automatisch).`;
 }
 
 /* ---------- Start ---------- */
@@ -1972,13 +1990,11 @@ function picStats() {
   } catch (e) { document.getElementById("loadnote").textContent = "Die Spieldaten konnten nicht geladen werden. Lade die Seite neu."; return; }
   try { GUIDE = window.KOMPASS_GUIDES || await (await fetch("guides.json")).json(); } catch (e) { GUIDE = { chars: {}, teams: [] }; }
   DATA.chars.forEach(c => CH[c.k] = c); DATA.weapons.forEach(w => WP[w.k] = w); DATA.artifacts.forEach(s => ART[String(s.id)] = s);
-  // Enka-Icons für Charaktere laden (einmalig). Bei Fehler bleibt der SVG-Fallback.
-  try {
-    const enka = await (await fetch("https://cdn.jsdelivr.net/gh/EnkaNetwork/API-docs@master/store/characters.json")).json();
-    Object.entries(enka).forEach(([id, info]) => {
-      if (info && info.SideIconName) ENKA_ICONS[+id] = info.SideIconName;
-    });
-  } catch (e) { /* offline / CORS – kein Problem, lokal bleibt der SVG-Fallback */ }
+  // Nur falls ein Charakter aus data.json oben noch kein Icon hat: Enka-Liste im Hintergrund nachladen (blockiert den Start nicht).
+  if (DATA.chars.some(c => !ICON_C[c.id])) fetch("https://cdn.jsdelivr.net/gh/EnkaNetwork/API-docs@master/store/characters.json").then(r => r.json()).then(enka => {
+    Object.entries(enka).forEach(([id, info]) => { if (info && info.SideIconName) ENKA_ICONS[+id] = info.SideIconName; });
+    render();
+  }).catch(() => {});
   try { ui.cview = localStorage.getItem("tk-cview") || ui.cview; ui.wview = localStorage.getItem("tk-wview") || ui.wview; } catch (e) {}
   setTab(location.hash.slice(1) || "uebersicht");
   if (!window.claude || !window.claude.use) { dbState = "nicht verfügbar (Seite außerhalb des Claude-Viewers)"; render(); return; }
