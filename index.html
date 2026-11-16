@@ -15,9 +15,17 @@ window.KOMPASS_LOCAL = true;
     set: async d => { try { localStorage.setItem(K(p), JSON.stringify(d)); } catch (e) { throw { code: "storage" }; } (subs[p] || []).forEach(cb => cb(snap(p))); },
     onSnapshot: cb => { (subs[p] = subs[p] || []).push(cb); setTimeout(() => cb(snap(p)), 0); return () => {}; }
   }) };
-  window.claude = { use: async n => { if (n === "db") return db; throw { code: "server_not_connected" }; } };
+  /* Eigene Bilder: werden im Browser verkleinert und nur dort gespeichert (nicht im Repository) */
+  const assets = { upload: file => new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { try { const S = 192, c = document.createElement("canvas"), k = Math.max(S / img.width, S / img.height); c.width = c.height = S;
+        const w = img.width * k, h = img.height * k; c.getContext("2d").drawImage(img, (S - w) / 2, (S - h) / 2, w, h); URL.revokeObjectURL(url);
+        let d = c.toDataURL("image/webp", 0.82); if (!/^data:image\/webp/.test(d)) d = c.toDataURL("image/png"); res({ id: "lokal", url: d }); } catch (e) { rej(e); } };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("kein Bild")); }; img.src = url; }) };
+  window.claude = { use: async n => { if (n === "db") return db; if (n === "assets") return assets; throw { code: "server_not_connected" }; } };
 })();
 </script>
+<style>#updBtn { display: none !important; }</style>
 <title>Teyvat-Kompass</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -355,6 +363,7 @@ body.dragging::after { content: "Bilder hier ablegen"; position: fixed; inset: 1
 .unmrow { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 200px) auto; gap: 10px; align-items: center; }
 .unmrow img { width: 44px; height: 44px; object-fit: cover; border-radius: 50%; }
 @media (max-width: 600px) { .unmrow { grid-template-columns: 44px minmax(0, 1fr) auto; } .unmrow .note { display: none; } }
+.notice.bad { border-color: var(--bad, #e2685f); color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -1946,11 +1955,24 @@ function unmatchedBox() {
 function picStats() { const n = DATA.chars.filter(c => PICS()["c:" + c.k]).length; return `${n} von ${DATA.chars.length} Charakteren haben ein eigenes Bild.`; }
 
 /* ---------- Start ---------- */
+window.addEventListener("error", e => { const n = document.getElementById("loadnote"); if (n && n.isConnected && /Lade Spieldaten/.test(n.textContent)) { n.className = "notice bad"; n.textContent = "Die Seite konnte nicht starten: " + (e.message || "unbekannter Fehler"); } });
 (async function start() {
+  /* Lädt eine Datei, die neben der Seite liegt (relativer Pfad, klappt auch in Unterordnern). Sagt genau, was schiefging. */
+  const loadJson = async name => {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+    let r;
+    try { r = await fetch("./" + name, { signal: ctl.signal, cache: "no-cache" }); }
+    catch (e) { throw new Error(e.name === "AbortError" ? `${name} antwortet nicht (Zeit abgelaufen).` : location.protocol === "file:" ? `${name} kann per Doppelklick nicht geladen werden. Öffne die Seite über GitHub Pages oder einen lokalen Server.` : `${name} wurde vom Browser blockiert oder das Netz ist weg.`); }
+    finally { clearTimeout(timer); }
+    if (!r.ok) throw new Error(r.status === 404 ? `${name} fehlt (404). Die Datei muss im selben Ordner wie index.html liegen.` : `${name}: Fehler ${r.status}.`);
+    try { return await r.json(); } catch (e) { throw new Error(`${name} ist beschädigt (kein gültiges JSON).`); }
+  };
+  const note = document.getElementById("loadnote");
   try {
-    DATA = window.KOMPASS_DATA || await (await fetch("data.json")).json();
-  } catch (e) { document.getElementById("loadnote").textContent = "Die Spieldaten konnten nicht geladen werden. Lade die Seite neu."; return; }
-  try { GUIDE = window.KOMPASS_GUIDES || await (await fetch("guides.json")).json(); } catch (e) { GUIDE = { chars: {}, teams: [] }; }
+    DATA = window.KOMPASS_DATA || await loadJson("data.json");
+    if (!DATA || !Array.isArray(DATA.chars)) throw new Error("data.json hat nicht den erwarteten Inhalt.");
+  } catch (e) { if (note) { note.className = "notice bad"; note.innerHTML = "<b>Die Spieldaten konnten nicht geladen werden.</b><br>" + esc(e.message); } return; }
+  try { GUIDE = window.KOMPASS_GUIDES || await loadJson("guides.json"); } catch (e) { GUIDE = { chars: {}, teams: [] }; setTimeout(() => toast("Guides fehlen: " + e.message), 500); }
   DATA.chars.forEach(c => CH[c.k] = c); DATA.weapons.forEach(w => WP[w.k] = w); DATA.artifacts.forEach(s => ART[String(s.id)] = s);
   try { ui.cview = localStorage.getItem("tk-cview") || ui.cview; ui.wview = localStorage.getItem("tk-wview") || ui.wview; } catch (e) {}
   setTab(location.hash.slice(1) || "uebersicht");

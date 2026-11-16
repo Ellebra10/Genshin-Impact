@@ -15,7 +15,10 @@ Private Übersicht für Genshin Impact (Spieldaten 7.2): Charaktere, Waffen, Art
 - Browserdaten löschen entfernt auch die Kompass-Daten. Vorher "Sicherung kopieren".
 
 ## Was hier nicht geht
-- Der Knopf "Aktualisieren" und das Hochladen von Bildern in der Seite (beides braucht die Claude-App).
+- Der Knopf "Aktualisieren" (braucht die Claude-App).
+
+## Eigene Bilder
+Bilder kannst du in der Seite hochladen oder auf einen Charakter ziehen. Sie werden verkleinert und nur in deinem Browser gespeichert, nicht im Repository.
 
 ## Lokal testen
 Im Ordner `python -m http.server` starten und `http://localhost:8000` öffnen. Ein Doppelklick auf index.html reicht nicht, weil die Seite `data.json` nachlädt.
