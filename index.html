@@ -1,0 +1,1978 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<script>
+/* GitHub-/PC-Version: Kontodaten bleiben nur im Browser dieses Geräts (localStorage), nie im Repository */
+window.KOMPASS_LOCAL = true;
+(function () {
+  const K = p => "teyvat-kompass:" + p, subs = {};
+  const read = p => { try { const v = localStorage.getItem(K(p)); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+  const snap = p => { const d = read(p); return { exists: d !== null, data: () => d, metadata: { fromCache: false } }; };
+  const db = { doc: p => ({
+    set: async d => { try { localStorage.setItem(K(p), JSON.stringify(d)); } catch (e) { throw { code: "storage" }; } (subs[p] || []).forEach(cb => cb(snap(p))); },
+    onSnapshot: cb => { (subs[p] = subs[p] || []).push(cb); setTimeout(() => cb(snap(p)), 0); return () => {}; }
+  }) };
+  window.claude = { use: async n => { if (n === "db") return db; throw { code: "server_not_connected" }; } };
+})();
+</script>
+<title>Teyvat-Kompass</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus+SC&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: App-Shell wie der Elias-Tal-Bauplan – Kopfleiste mit Tabs, darunter je Tab eine Arbeitsfläche.
+   Bewusst nur ein dunkler Look: Nachthimmel über Teyvat, Sternengold als Akzent, Elementfarben als Signale. */
+:root {
+  color-scheme: dark;
+  --bg: #0d111d;
+  --panel: #151a2b;
+  --panel2: #1c2238;
+  --line: #2a3150;
+  --fg: #ebe7dc;
+  --muted: #9aa1b8;
+  --gold: #d8b366;
+  --r5a: #a8741f; --r5b: #f3cf6b; --r4a: #6a4bb0; --r4b: #c4a6f5;
+  --gold-ink: #1b1508;
+  --ok: #7cc68a;
+  --warn: #e5a650;
+  --bad: #e2706a;
+  --pyro: #ef7c55; --hydro: #4fc1f0; --anemo: #72d6b6; --electro: #b582f2;
+  --dendro: #a8cb40; --cryo: #a2dcea; --geo: #f0b545; --none: #9aa1b8;
+  --f-display: "Marcellus SC", "Palatino Linotype", Georgia, serif;
+  --f-body: "Nunito Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.45;
+  background-image: radial-gradient(1px 1px at 12% 18%, #ffffff22 50%, transparent 51%), radial-gradient(1px 1px at 72% 8%, #ffffff1c 50%, transparent 51%),
+  radial-gradient(1.5px 1.5px at 40% 60%, #ffffff14 50%, transparent 51%), radial-gradient(1px 1px at 88% 44%, #ffffff18 50%, transparent 51%);
+  background-attachment: fixed; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-size: 24px; letter-spacing: .04em; white-space: nowrap; }
+.brand svg { width: 28px; height: 28px; color: var(--gold); }
+.brand b { color: var(--gold); font-weight: 400; }
+nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { background: transparent; border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 13px; color: var(--muted); }
+.tab:hover { color: var(--fg); border-color: var(--line); }
+.tab[aria-selected="true"] { background: var(--gold); color: var(--gold-ink); }
+.upd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.upd:has(#updStatus:empty) { width: auto; }
+#updStatus[data-kind="bad"] { color: var(--warn); }
+#updStatus[data-kind="ok"] { color: var(--ok); }
+.who { margin-left: auto; font-size: 12px; color: var(--muted); text-align: right; }
+.who b { color: var(--fg); font-weight: 700; }
+
+main { padding-block: 20px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1320px; margin: 0 auto; }
+section.page { display: flex; flex-direction: column; gap: 18px; }
+h1, h2, h3 { margin: 0; font-weight: 400; text-wrap: balance; }
+h1 { font-family: var(--f-display); font-size: 32px; letter-spacing: .02em; }
+h2 { font-family: var(--f-display); font-size: 22px; letter-spacing: .02em; }
+h3 { font-size: 16px; color: var(--fg); font-weight: 700; }
+.lead { color: var(--muted); max-width: 70ch; margin: 4px 0 0; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.note { font-size: 13px; color: var(--muted); }
+.notice { border: 1px dashed var(--gold); border-radius: 10px; padding: 12px 14px; background: color-mix(in srgb, var(--gold) 8%, transparent); font-size: 14px; }
+.notice b { color: var(--gold); }
+
+/* Kacheln */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.tile .big { font-family: var(--f-display); font-size: 30px; line-height: 1.1; }
+.tile .big small { font-family: var(--f-body); font-size: 14px; color: var(--muted); }
+.tile .lbl { font-size: 13px; color: var(--muted); font-weight: 700; }
+
+/* Filter */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filters input[type=search], .filters select, .field input, .field select, textarea {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+.filters input[type=search] { flex: 1 1 200px; }
+.chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip svg { width: 14px; height: 14px; }
+.btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 13px; font-weight: 700; font-size: 14px; }
+.btn:hover { border-color: var(--muted); }
+a.btn { color: var(--gold); text-decoration: none; display: inline-flex; align-items: center; }
+.btn.primary { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+.btn.small { padding: 4px 9px; font-size: 13px; }
+.btn.danger { color: var(--bad); }
+.count { font-size: 13px; color: var(--muted); }
+
+/* Karten-Raster */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.card { position: relative; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 6px; min-height: 132px; overflow: hidden; }
+.card:hover { border-color: var(--muted); }
+.card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--el, var(--none)); }
+.card.r5 { background: linear-gradient(160deg, color-mix(in srgb, var(--gold) 12%, var(--panel)) 0%, var(--panel) 55%); }
+.card.missing { opacity: .45; filter: saturate(.3); }
+.card.missing:hover { opacity: .8; }
+.card .top { display: flex; align-items: center; gap: 10px; }
+.cards.big { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+/* Charakter-Abzeichen: Element-Verlauf innen, Seltenheits-Rahmen außen */
+.ava { --sz: 54px; --ring: var(--r4a), var(--r4b), var(--r4a); width: var(--sz); height: var(--sz); flex: none; border-radius: 50%; position: relative;
+  padding: calc(var(--sz) * .055); background: conic-gradient(from 210deg, var(--ring)); box-shadow: 0 2px 8px #0005; }
+.ava.r5 { --ring: var(--r5a), var(--r5b), #fff6d8, var(--r5b), var(--r5a); box-shadow: 0 0 calc(var(--sz) * .18) color-mix(in srgb, var(--r5b) 45%, transparent), 0 2px 8px #0005; }
+.ava .core { width: 100%; height: 100%; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--sz) * .02);
+  background: radial-gradient(circle at 32% 26%, #ffffff66 0 8%, transparent 32%), linear-gradient(150deg, var(--e1), var(--e2));
+  box-shadow: inset 0 0 0 1px #ffffff40, inset 0 calc(var(--sz) * -.08) calc(var(--sz) * .16) #0003; overflow: hidden; }
+.ava .wi { font-size: calc(var(--sz) * .36); line-height: 1; filter: drop-shadow(0 1px 1px #0006); }
+.ava .ek { font: 800 calc(var(--sz) * .15)/1 var(--f-body, sans-serif); letter-spacing: .08em; color: #10131c; background: #ffffffb3; border-radius: 999px; padding: 1px calc(var(--sz) * .07); }
+.ava.lg { --sz: 84px; }
+.ava .core { position: relative; }
+.ava .lpic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; background: var(--panel2); }
+.ava.e-anemo { --e1: #b4f3df; --e2: #3fb7a0; } .ava.e-geo { --e1: #f6dc8a; --e2: #c08a1c; }
+.ava.e-electro { --e1: #d6c2fa; --e2: #8357d6; } .ava.e-dendro { --e1: #d3ea86; --e2: #5f9a2a; }
+.ava.e-hydro { --e1: #a6e3fb; --e2: #2a8fd0; } .ava.e-pyro { --e1: #f8a56a; --e2: #d63f2a; }
+.ava.e-cryo { --e1: #eefcfc; --e2: #7fcfe0; } .ava.e-keins { --e1: #d9dce4; --e2: #8a90a0; }
+.gearline { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; }
+.gearline svg { width: 15px; height: 15px; flex: none; color: var(--gold); }
+.gearline span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setdots { display: flex; gap: 4px; flex-wrap: wrap; }
+.gear { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.gtile { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.gtile .gh { display: flex; align-items: center; gap: 8px; }
+.gtile .gh svg { width: 22px; height: 22px; color: var(--gold); flex: none; }
+.gtile .gm { font-weight: 700; font-size: 15px; }
+.gtile .gs { font-size: 12.5px; color: var(--muted); display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; }
+.gtile .gs b { color: var(--fg); font-weight: 600; font-family: var(--f-mono); font-size: 12px; text-align: right; }
+.gtile.empty { border-style: dashed; color: var(--muted); justify-content: center; align-items: center; min-height: 90px; }
+.gtile.empty svg { width: 26px; height: 26px; flex: none; }
+.ava.pic, .wemb.pic { overflow: hidden; }
+.ava img, .wemb img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.ava.pic .mini { z-index: 1; }
+.wemb { --sz: 54px; width: var(--sz); height: var(--sz); flex: none; border-radius: 14px; display: grid; place-items: center; color: var(--sc);
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--sc) 30%, var(--panel2)) 0%, var(--panel) 75%); border: 2px solid color-mix(in srgb, var(--sc) 60%, transparent); }
+.wemb svg { width: 62%; height: 62%; }
+.wemb.r5 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--gold); }
+.wemb.r4 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px #a888e0; }
+.wemb.r3 { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px #6fa3d8; }
+.wemb.lg { --sz: 84px; border-radius: 18px; }
+.setpill { display: inline-flex; align-items: center; gap: 6px; border-color: color-mix(in srgb, var(--sc) 55%, transparent); }
+.setpill i { width: 9px; height: 9px; border-radius: 2px; background: var(--sc); display: inline-block; flex: none; }
+.gtile.art { border-left: 4px solid var(--sc); }
+.linkrow { width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; gap: 12px; flex-wrap: nowrap; }
+.linkrow:hover { border-color: var(--muted); }
+.linkrow .ava { --sz: 40px; }
+.wear { font-size: 12px; color: var(--muted); font-family: var(--f-body); }
+.gtile.click { cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.gtile.click:hover { border-color: var(--muted); }
+details.edit > summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+details.edit[open] > summary { margin-bottom: 10px; }
+.sigil { width: 26px; height: 26px; flex: none; color: var(--el, var(--none)); }
+.card .nm { font-weight: 700; font-size: 15px; line-height: 1.2; overflow-wrap: anywhere; }
+.stars { color: var(--gold); font-size: 11px; letter-spacing: 1px; }
+.card .meta { font-size: 12px; color: var(--muted); }
+.card .lv { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-family: var(--f-mono); font-size: 12px; }
+.pill { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 700; font-family: var(--f-body); white-space: nowrap; }
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.pill.gold { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
+.flag { position: absolute; top: 10px; right: 10px; }
+
+/* Dialog */
+.scrim { position: fixed; inset: 0; background: #05070dcc; z-index: 20; display: flex; justify-content: flex-end; }
+.drawer { width: min(560px, 100%); height: 100%; background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
+  padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 16px; }
+.drawer .head { display: flex; gap: 12px; align-items: flex-start; }
+.drawer .head .sigil { width: 44px; height: 44px; }
+.drawer .head h2 { font-size: 28px; }
+.close { margin-left: auto; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
+.field input, .field select { color: var(--fg); font-weight: 400; font-size: 14px; width: 100%; }
+.check { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.check li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; font-size: 14px; }
+.check li::before { content: "●"; font-size: 12px; line-height: 1.6; }
+.check li.ok::before { color: var(--ok); } .check li.warn::before { color: var(--warn); } .check li.bad::before { color: var(--bad); }
+.grade { font-family: var(--f-display); font-size: 34px; line-height: 1; width: 52px; height: 52px; border-radius: 12px; display: grid; place-items: center; border: 1px solid var(--line); flex: none; }
+
+/* Tabellen */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--panel2); font-weight: 700; }
+td.n, th.n { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td input.inv { width: 84px; text-align: right; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font-family: var(--f-mono); }
+.miss { color: var(--bad); font-weight: 700; }
+.have { color: var(--ok); }
+
+/* Balken */
+.bars { display: flex; flex-direction: column; gap: 7px; }
+.bar { display: grid; grid-template-columns: 104px 1fr 54px; gap: 10px; align-items: center; font-size: 13px; }
+.bar .track { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
+.bar .track i { display: block; height: 100%; background: var(--el, var(--gold)); border-radius: 5px; }
+.prog { height: 12px; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+.prog i { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--gold)); }
+
+/* Teams */
+.slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.slot { background: var(--panel2); border: 1px dashed var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
+.slot select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; width: 100%; }
+.slot.filled { border-style: solid; border-color: var(--el, var(--line)); }
+.react { display: flex; flex-direction: column; gap: 8px; }
+.react .r { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 8px 10px; background: var(--panel2); border-radius: 8px; }
+.react .r b { white-space: nowrap; }
+.duo { display: inline-flex; gap: 2px; }
+.duo svg { width: 18px; height: 18px; }
+
+.goal { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.goal input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--ok); }
+.goal.done .t { text-decoration: line-through; color: var(--muted); }
+
+.status { font-size: 12px; color: var(--muted); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 14px; z-index: 30; }
+@media (max-width: 720px) { .who { margin-left: 0; text-align: left; width: 100%; } h1 { font-size: 26px; } }
+/* Seitenleiste (breite Bildschirme) und Wisch-Leiste (Handy) */
+.tab svg { width: 18px; height: 18px; flex: none; }
+.tab { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+@media (max-width: 959px) {
+  nav.tabs { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; padding-bottom: 2px; }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  .who { display: none; }
+}
+@media (min-width: 960px) {
+  header.top { position: fixed; top: 0; bottom: 0; left: 0; width: 236px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 18px; overflow-y: auto;
+    padding-block: calc(20px + env(safe-area-inset-top, 0px)) 18px; padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: 14px;
+    border-bottom: 0; border-right: 1px solid var(--line); background: linear-gradient(180deg, #1b1a3a 0%, var(--panel) 45%); }
+  .brand { font-size: 22px; padding-left: 6px; }
+  nav.tabs { flex-direction: column; gap: 3px; }
+  .tab { border-radius: 10px; padding: 9px 12px; font-size: 14px; width: 100%; }
+  .tab[aria-selected="true"] { box-shadow: 0 0 18px color-mix(in srgb, var(--gold) 35%, transparent); }
+  .who { order: 9; margin: auto 0 0; text-align: left; border-top: 1px solid var(--line); padding-top: 12px; }
+  .upd, .upd:has(#updStatus:empty) { width: 100%; flex-direction: column; align-items: stretch; }
+  main { margin-left: 236px; max-width: 1400px; }
+}
+/* Charakter-Raster: runde Felder, Name darunter */
+.viewsw { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.viewsw button { background: transparent; border: 0; padding: 5px 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.viewsw button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); }
+.grp { display: flex; align-items: baseline; gap: 10px; }
+.grp h2 { font-size: 20px; }
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 16px 8px; }
+.rc { background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 8px 4px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: inherit; min-width: 0; }
+.rc:hover { background: var(--panel); border-color: var(--line); }
+.rc .ring { position: relative; display: block; }
+.rc .ava { display: block; }
+.rc .ava { --sz: 70px; }
+.rc .eldot { position: absolute; right: -4px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); display: grid; place-items: center; }
+.rc .eldot svg { width: 15px; height: 15px; color: var(--el); }
+.rc .cbadge { position: absolute; left: -4px; top: -3px; font: 800 10.5px/1 var(--f-body); background: var(--bg); color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent); border-radius: 999px; padding: 3px 5px; }
+.rc .gdot { position: absolute; right: -4px; top: -3px; font: 800 11px/1 var(--f-body); background: var(--bg); border: 1px solid currentColor; border-radius: 999px; padding: 3px 5px; }
+.rc .nm { font-size: 13px; font-weight: 700; line-height: 1.15; text-align: center; max-width: 100%; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rc .sub { font: 600 11px/1 var(--f-mono); color: var(--muted); }
+.rc.missing .ava { filter: grayscale(.9) brightness(.55); }
+.rc.missing .nm { color: var(--muted); font-weight: 600; }
+.rc.sm .ava { --sz: 54px; }
+.rc.sm { width: 92px; }
+@media (max-width: 600px) { .rc.sm { width: 76px; } .rc.sm .ava { --sz: 46px; } .roster { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); } .rc .ava { --sz: 60px; } }
+.minis { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Waffen-Kacheln, nach Seltenheit gefärbt */
+.wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.wt { --rt: #22406b; position: relative; border: 1px solid color-mix(in srgb, var(--rt) 80%, var(--line)); border-radius: 12px; padding: 12px 8px 9px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; color: inherit;
+  background: linear-gradient(175deg, color-mix(in srgb, var(--rt) 75%, var(--panel)) 0%, var(--panel) 78%); min-width: 0; }
+.wt.r5 { --rt: #7a5418; } .wt.r4 { --rt: #47337a; } .wt.r3 { --rt: #234a78; }
+.wt:hover { border-color: var(--muted); }
+.wt .wemb { --sz: 58px; }
+.wt .nm { font-size: 12.5px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wt .sub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.wt .rk { position: absolute; left: 7px; top: 7px; font: 800 10.5px/1 var(--f-body); color: var(--gold); background: var(--bg); border-radius: 999px; padding: 3px 5px; }
+.wt.missing { opacity: .42; filter: saturate(.3); }
+/* Übersicht: Tägliche Runde */
+.today { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.today .side { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 860px) { .today { grid-template-columns: 1fr; } }
+.daily { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.daily li { border-top: 1px solid var(--line); padding: 10px 2px; }
+.daily li:first-child { border-top: 0; }
+.daily label { display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: center; cursor: pointer; }
+.daily input { width: 20px; height: 20px; accent-color: var(--ok); }
+.daily label > span, .daily .boss > span:first-child { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.daily input:checked + span b { color: var(--muted); text-decoration: line-through; }
+.daily .boss { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-left: 36px; }
+/* Übersicht: Plan für heute */
+.plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
+.hero { background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 14%, var(--panel)) 0%, var(--panel) 60%); border-color: color-mix(in srgb, var(--gold) 35%, var(--line)); }
+.todo { display: flex; flex-direction: column; gap: 10px; }
+.todo .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+.todo .num { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: var(--gold-ink); font-weight: 800; }
+.todo .step p { margin: 2px 0 6px; }
+/* ===== Upgrade: Medaillons, Guide, Team-Ideen, Schnellsuche, feinere Karten ===== */
+.ava .cst { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ava .ini { position: relative; font: 400 calc(var(--sz) * .34)/1 var(--f-display); color: #0f1322; letter-spacing: .02em; text-shadow: 0 1px 0 #ffffff66; }
+.ava .wg { position: absolute; right: 12%; bottom: 10%; width: 26%; height: 26%; color: #0f1322; opacity: .8; }
+.ava .lpic { z-index: 2; }
+.ava, .rc, .wt, .card, .linkrow, .box, .chip, .btn, .tab, .idea { transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background-color .16s ease; }
+.rc:hover .ava, .linkrow:hover .ava { transform: translateY(-2px) scale(1.05); }
+.wt:hover { transform: translateY(-3px); box-shadow: 0 10px 22px #0007; }
+.rc:hover { box-shadow: 0 8px 20px #0006; }
+.box { border-radius: 16px; padding: 18px; background: linear-gradient(180deg, #181e33 0%, var(--panel) 100%); box-shadow: 0 1px 0 #ffffff0a inset, 0 6px 18px #0004; }
+.box.hero { background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 13%, var(--panel)) 0%, var(--panel) 62%); }
+section.page { gap: 22px; }
+h1 { font-size: clamp(26px, 3.4vw, 36px); }
+.chip:hover { border-color: var(--muted); }
+kbd { font: 600 11px var(--f-mono); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; margin-left: 4px; color: var(--muted); }
+.guide b { font-size: 14px; }
+.gl { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+.ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 430px), 1fr)); gap: 14px; }
+.idea { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.idea:hover { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+.rot { margin: 0; font-size: 13.5px; background: #0b0f1c; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; line-height: 1.55; }
+.fcat { border-top: 1px solid var(--line); padding-top: 10px; }
+.fcat summary { cursor: pointer; padding: 2px 0 8px; }
+.palscrim { justify-content: center; align-items: flex-start; padding: max(8vh, 20px) 16px 16px; z-index: 40; }
+.palbox { width: min(640px, 100%); background: var(--panel); border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--line)); border-radius: 16px; box-shadow: 0 24px 60px #000a; display: flex; flex-direction: column; overflow: hidden; max-height: 80vh; }
+.palbox input { border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 16px 18px; font-size: 17px; outline: none; width: 100%; }
+.pallist { overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.palitem { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; background: transparent; border: 0; border-radius: 10px; padding: 9px 12px; }
+.palitem[aria-selected="true"], .palitem:hover { background: var(--panel2); }
+.palitem[aria-selected="true"] b { color: var(--gold); }
+.palhelp { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); }
+body.dragging::after { content: "Bilder hier ablegen"; position: fixed; inset: 12px; z-index: 60; border: 3px dashed var(--gold); border-radius: 18px; background: #0d111dd9; display: grid; place-items: center; font: 400 28px var(--f-display); color: var(--gold); pointer-events: none; }
+.unm { display: flex; flex-direction: column; gap: 6px; }
+.unmrow { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(0, 200px) auto; gap: 10px; align-items: center; }
+.unmrow img { width: 44px; height: 44px; object-fit: cover; border-radius: 50%; }
+@media (max-width: 600px) { .unmrow { grid-template-columns: 44px minmax(0, 1fr) auto; } .unmrow .note { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="16" cy="16" r="13"/><circle cx="16" cy="16" r="9" stroke-dasharray="2 3"/><path d="M16 4 L19 16 L16 28 L13 16 Z" fill="currentColor" fill-opacity=".25"/><path d="M4 16 L16 13.5 L28 16 L16 18.5 Z"/></svg>
+    <span>Teyvat-<b>Kompass</b></span>
+  </div>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <div class="who" id="who"></div>
+  <div class="upd"><button class="btn small primary" id="updBtn" title="Holt deine Charakterliste von HoYoLAB und die Details deiner Vitrine">↻ Aktualisieren</button><button class="btn small" id="searchBtn" title="Schnellsuche (Taste /)">Suchen <kbd>/</kbd></button><span id="updStatus" class="status"></span></div>
+</header>
+
+<main id="main">
+  <div class="notice" id="loadnote">Lade Spieldaten …</div>
+</main>
+<div id="layer"></div>
+<div id="pal" hidden></div>
+
+<script>
+"use strict";
+/* ---------- Grunddaten ---------- */
+const TABS = [
+  ["uebersicht", "Übersicht"], ["charaktere", "Charaktere"], ["waffen", "Waffen"], ["artefakte", "Artefakte"],
+  ["material", "Material & Farmen"], ["teams", "Teams"], ["wishes", "Wishes"], ["ziele", "Ziele"], ["import", "Daten laden"]
+];
+const TICON = {
+  uebersicht: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11z" fill="currentColor"/>',
+  charaktere: '<circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 21c1-4.5 4-7 8-7s7 2.5 8 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+  waffen: '<path d="M19 3 9.5 12.5M19 3h2v2l-9.5 9.5M8 11l5 5M6 15l3 3M4.5 16.5 3 21l4.5-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  artefakte: '<path d="M12 12c-3-4-3-7 0-9 3 2 3 5 0 9zm0 0c4-3 7-3 9 0-2 3-5 3-9 0zm0 0c3 4 3 7 0 9-3-2-3-5 0-9zm0 0c-4 3-7 3-9 0 2-3 5-3 9 0z" fill="none" stroke="currentColor" stroke-width="1.4"/>',
+  material: '<path d="M4 5c3-1 6-1 8 1 2-2 5-2 8-1v14c-3-1-6-1-8 1-2-2-5-2-8-1zM12 6v14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+  teams: '<circle cx="8" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5M11 19c.8-3 2.6-4.5 5-4.5s4.7 1.5 5.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  wishes: '<path d="M12 3l2.2 6.3L21 12l-6.8 2.7L12 21l-2.2-6.3L3 12l6.8-2.7z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+  ziele: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m8 12.5 3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  import: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+};
+const ELEMENTS = ["Pyro", "Hydro", "Anemo", "Electro", "Dendro", "Cryo", "Geo"];
+const ELVAR = { Pyro: "--pyro", Hydro: "--hydro", Anemo: "--anemo", Electro: "--electro", Dendro: "--dendro", Cryo: "--cryo", Geo: "--geo", Keins: "--none" };
+const WEAPONS = ["Schwert", "Claymore", "Stangenwaffe", "Bogen", "Katalysator"];
+const SIG = {
+  Pyro: '<path d="M16 3c2 5 8 8 8 15a8 8 0 0 1-16 0c0-4 2-6 4-8 0 3 1 5 3 6-1-5 0-9 1-13z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
+  Hydro: '<path d="M16 3C12 10 7 14 7 20a9 9 0 0 0 18 0c0-6-5-10-9-17z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6"/><path d="M12 21a4 4 0 0 0 4 4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  Anemo: '<path d="M5 12h14a4 4 0 1 0-4-4M4 18h20a4 4 0 1 1-4 4M7 24h7" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>',
+  Electro: '<path d="M18 3 7 18h8l-2 11 12-16h-8z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
+  Dendro: '<path d="M6 26C6 13 14 5 27 5c0 13-8 21-21 21z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6"/><path d="M6 26 20 12" stroke="currentColor" stroke-width="1.6"/>',
+  Cryo: '<g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M16 3v26M4.7 9.5l22.6 13M4.7 22.5l22.6-13"/><path d="M13 6l3 3 3-3M13 26l3-3 3 3" fill="none"/></g>',
+  Geo: '<path d="M16 3 27 11 23 27H9L5 11z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 3v24M5 11l11 6 11-6" stroke="currentColor" stroke-width="1.2" fill="none"/>',
+  Keins: '<circle cx="16" cy="16" r="10" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M16 9l2 7-2 7-2-7z" fill="currentColor"/>'
+};
+const sigil = (e, cls = "sigil") => `<svg class="${cls}" viewBox="0 0 32 32" aria-hidden="true" style="--el:var(${ELVAR[e] || "--none"})">${SIG[e] || SIG.Keins}</svg>`;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => Math.round(n).toLocaleString("de-AT");
+const pct = v => (v * 100).toFixed(1).replace(".", ",") + " %";
+const stars = r => "★".repeat(r || 0);
+
+/* Banner von Version 7.2 (Stand 06.11.2026, Quellen: offizielle 7.2-Ankündigung, Game8).
+   Einträge sind Schlüssel aus den Spieldaten; die Namen kommen beim Anzeigen aus data.json. */
+const BANNER_STAND = "06.11.2026";
+const BANNERS = [
+  { phase: "7.2 Phase 1", start: "2026-11-04", end: "2026-11-24", five: ["mitya", "furina"], four: ["valeriy", "charlotte", "rosaria"],
+    weap: ["starsealededict", "splendoroftranquilwaters"], neu: ["mitya", "valeriy", "starsealededict"] },
+  { phase: "7.2 Phase 2", start: "2026-11-24", end: "2026-12-15", five: ["zibai", "linnea"], four: null,
+    weap: ["lightbearingmoonshard", "goldenfrostboundoath"],
+    chron: { five: ["varesa", "chasca", "xilonen", "kinich", "mualani"], weap: ["vividnotions", "astralvulturescrimsonplumage", "peakpatrolsong", "fangofthemountainking", "surfsup"] } }
+];
+/* Name eines Banner-Eintrags, mit „neu“ und deinem Stand (✓ C2), falls du ihn schon hast */
+function bName(k, b) {
+  const c = CH[k], w = WP[k];
+  let n = (c && c.n) || (w && w.n) || k;
+  if (b && (b.neu || []).includes(k)) n += " (neu)";
+  if (c && owned(k)) n += ` ✓ C${(acct.chars.map[k] || {}).c || 0}`;
+  else if (w && ownedW(k)) n += " ✓";
+  return n;
+}
+const bList = (b, list) => (list || []).map(k => bName(k, b)).join(", ");
+const RESONANCE = {
+  Pyro: "Feuer-Resonanz: ATK +25 %", Hydro: "Wasser-Resonanz: max. HP +25 %", Anemo: "Wind-Resonanz: Ausdauer und Abklingzeiten −5 %, mehr Tempo",
+  Electro: "Blitz-Resonanz: bei Reaktionen Energie-Partikel", Dendro: "Natur-Resonanz: Elementarkunde +50 und mehr bei Reaktionen",
+  Cryo: "Eis-Resonanz: CRIT Rate +15 % gegen gefrorene oder Cryo-Gegner", Geo: "Stein-Resonanz: stärkere Schilde, +15 % Schaden mit Schild"
+};
+const REACTIONS = [
+  ["Pyro", "Hydro", "Vaporize", "verstärkend", "Hydro auf Pyro ×2, Pyro auf Hydro ×1,5 Schaden. Klassiker für Hu Tao, Yoimiya, Xiangling."],
+  ["Pyro", "Cryo", "Melt", "verstärkend", "Pyro auf Cryo ×2, Cryo auf Pyro ×1,5 Schaden."],
+  ["Pyro", "Electro", "Overload", "transformativ", "Explosion mit Pyro-Schaden, schleudert Gegner weg."],
+  ["Pyro", "Dendro", "Burning", "transformativ", "Brennt über Zeit; Basis für Burgeon mit Hydro-Dendro-Kernen."],
+  ["Pyro", "Anemo", "Swirl", "transformativ", "Verteilt Pyro auf Gegner in der Nähe; senkt mit Viridescent Venerer die Resistenz."],
+  ["Pyro", "Geo", "Crystallize", "Schild", "Erzeugt einen Pyro-Kristallschild."],
+  ["Hydro", "Electro", "Electro-Charged", "transformativ", "Schaden über Zeit. Mit einem 5★ aus Nod-Krai wird daraus Lunar-Charged."],
+  ["Hydro", "Cryo", "Freeze", "Kontrolle", "Friert Gegner ein. Mit CRIT-Rate-Bonus der Eis-Resonanz sehr stark."],
+  ["Hydro", "Dendro", "Bloom", "transformativ", "Erzeugt Dendro-Kerne. Mit Electro: Hyperbloom, mit Pyro: Burgeon. Mit Nod-Krai-5★: Lunar-Bloom."],
+  ["Hydro", "Anemo", "Swirl", "transformativ", "Verteilt Hydro auf Gegner in der Nähe."],
+  ["Hydro", "Geo", "Crystallize", "Schild", "Erzeugt einen Hydro-Kristallschild."],
+  ["Electro", "Cryo", "Superconduct", "transformativ", "Senkt die physische Resistenz. Mit Odette, Sandrone, Mitya oder dem Cryo-Reisenden im Team wird daraus Stellar-Conduct."],
+  ["Electro", "Dendro", "Quicken", "Katalyse", "Danach Aggravate (Electro stärker) und Spread (Dendro stärker)."],
+  ["Electro", "Anemo", "Swirl", "transformativ", "Verteilt Electro auf Gegner in der Nähe."],
+  ["Electro", "Geo", "Crystallize", "Schild", "Erzeugt einen Electro-Kristallschild."],
+  ["Cryo", "Anemo", "Swirl", "transformativ", "Verteilt Cryo. Mit Odette, Sandrone oder dem Cryo-Reisenden im Team wird daraus Stellar Swirl."],
+  ["Cryo", "Geo", "Crystallize", "Schild", "Erzeugt einen Cryo-Kristallschild."],
+  ["Hydro", "Geo", "Lunar-Crystallize", "Nod-Krai", "Nur mit bestimmten Nod-Krai-Charakteren (z. B. Linnea)."]
+];
+const PROP = { FIGHT_PROP_HP: "HP", FIGHT_PROP_HP_PERCENT: "HP%", FIGHT_PROP_ATTACK: "ATK", FIGHT_PROP_ATTACK_PERCENT: "ATK%",
+  FIGHT_PROP_DEFENSE: "DEF", FIGHT_PROP_DEFENSE_PERCENT: "DEF%", FIGHT_PROP_CRITICAL: "CRIT Rate", FIGHT_PROP_CRITICAL_HURT: "CRIT DMG",
+  FIGHT_PROP_CHARGE_EFFICIENCY: "Energy Recharge", FIGHT_PROP_ELEMENT_MASTERY: "Elementarkunde", FIGHT_PROP_HEAL_ADD: "Heilbonus",
+  FIGHT_PROP_FIRE_ADD_HURT: "Pyro-Schaden", FIGHT_PROP_ELEC_ADD_HURT: "Electro-Schaden", FIGHT_PROP_WATER_ADD_HURT: "Hydro-Schaden",
+  FIGHT_PROP_GRASS_ADD_HURT: "Dendro-Schaden", FIGHT_PROP_WIND_ADD_HURT: "Anemo-Schaden", FIGHT_PROP_ROCK_ADD_HURT: "Geo-Schaden",
+  FIGHT_PROP_ICE_ADD_HURT: "Cryo-Schaden", FIGHT_PROP_PHYSICAL_ADD_HURT: "Physischer Schaden" };
+const PCT_PROPS = new Set(["HP%", "ATK%", "DEF%", "CRIT Rate", "CRIT DMG", "Energy Recharge", "Heilbonus", "Pyro-Schaden", "Electro-Schaden", "Hydro-Schaden", "Dendro-Schaden", "Anemo-Schaden", "Geo-Schaden", "Cryo-Schaden", "Physischer Schaden"]);
+const SLOTS = { EQUIP_BRACER: "Blume", EQUIP_NECKLACE: "Feder", EQUIP_SHOES: "Sanduhr", EQUIP_RING: "Kelch", EQUIP_DRESS: "Krone" };
+const SLOT_ORDER = ["Blume", "Feder", "Sanduhr", "Kelch", "Krone"];
+const LV_CAPS = [20, 40, 50, 60, 70, 80, 90, 95, 100];
+
+/* ---------- Zustand ---------- */
+let DATA = null, CH = {}, WP = {}, ART = {};
+const acct = { profile: {}, chars: { map: {} }, weapons: { map: {} }, goals: { list: [] }, inv: { mats: {} }, teams: { list: [] }, wishes: { b: {} }, pics: { map: {} },
+  daily: { d: "", done: [] }, weekly: { w: "", boss: 0 }, farm: { list: [] },
+  art0: { list: [] }, art1: { list: [] }, art2: { list: [] }, art3: { list: [] }, art4: { list: [] } };
+const DOCS = Object.keys(acct);
+/* Artefakt-Inventar: alle Artefakte aus dem Scanner (GOOD-Datei), je Teil ein Dokument */
+const GOODSTAT = { hp: "HP", hp_: "HP%", atk: "ATK", atk_: "ATK%", def: "DEF", def_: "DEF%", eleMas: "Elementarkunde", enerRech_: "Energy Recharge",
+  critRate_: "CRIT Rate", critDMG_: "CRIT DMG", heal_: "Heilbonus", physical_dmg_: "Physischer Schaden", anemo_dmg_: "Anemo-Schaden", geo_dmg_: "Geo-Schaden",
+  electro_dmg_: "Electro-Schaden", hydro_dmg_: "Hydro-Schaden", pyro_dmg_: "Pyro-Schaden", cryo_dmg_: "Cryo-Schaden", dendro_dmg_: "Dendro-Schaden" };
+const GOODSLOT = { flower: "Blume", plume: "Feder", sands: "Sanduhr", goblet: "Kelch", circlet: "Krone" };
+/* größter Wert eines einzelnen Nebenwert-Wurfs bei 5★ – damit werden Nebenwerte vergleichbar */
+const ROLL = { "CRIT Rate": 3.89, "CRIT DMG": 7.77, "ATK%": 5.83, "HP%": 5.83, "DEF%": 7.29, "Elementarkunde": 23.31, "Energy Recharge": 6.48, "ATK": 19.45, "HP": 298.75, "DEF": 23.15 };
+const goodKey = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/['’"]/g, "").split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join("");
+let ARTS = [];
+function rebuildArts() { ARTS = [0, 1, 2, 3, 4].flatMap(i => (acct["art" + i].list || [])); }
+function allArtifacts() {
+  if (ARTS.length) return ARTS;
+  const out = []; Object.entries(acct.chars.map).forEach(([k, a]) => (a.arts || []).forEach(x => out.push({ ...x, loc: k })));
+  return out;
+}
+const PRESETS = {
+  atk: { n: "Schaden mit ATK", w: { "CRIT Rate": 1, "CRIT DMG": 1, "ATK%": .75, "ATK": .25, "Elementarkunde": .25, "Energy Recharge": .3 } },
+  hp: { n: "Schaden mit HP", w: { "CRIT Rate": 1, "CRIT DMG": 1, "HP%": .75, "HP": .25, "Energy Recharge": .3 } },
+  def: { n: "Schaden mit DEF", w: { "CRIT Rate": 1, "CRIT DMG": 1, "DEF%": .75, "DEF": .25, "Energy Recharge": .3 } },
+  em: { n: "Reaktionen (Elementarkunde)", w: { "Elementarkunde": 1, "Energy Recharge": .6, "CRIT Rate": .35, "CRIT DMG": .35, "ATK%": .2 } },
+  er: { n: "Support mit Energy Recharge", w: { "Energy Recharge": 1, "CRIT Rate": .5, "CRIT DMG": .5, "ATK%": .3, "HP%": .3 } },
+  heal: { n: "Heiler / HP-Support", w: { "HP%": 1, "Energy Recharge": .8, "HP": .3, "DEF%": .1 } }
+};
+function artValue(x, w) { let s = 0; (x.subs || []).forEach(([n, v]) => { if (w[n] && ROLL[n]) s += w[n] * v / ROLL[n]; }); return s; }
+let db = null, canWrite = true, dbState = "lädt";
+const ui = { ti: { q: "", mode: "kann" }, unm: [], ideaNote: null, cview: "raster", wview: "kacheln", imp: { enka: "", good: "", bulk: "", bulkOut: "" }, af: "inv", aff: { q: "", slot: "", set: "", where: "alle", sort: "wert" }, opt: { char: "", preset: "atk", sands: "", goblet: "", circlet: "", set: "", free: true, lv16: false },
+  tab: "uebersicht", cf: { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: "rar", role: "", st: "" }, wf: { q: "", own: "alle", w: "", r: "" }, plan: { char: "", lv: 90, t: [10, 10, 10] }, team: ["", "", "", ""], afSet: "" };
+
+/* ---------- Speichern (eine Schreibung pro Dokument zur Zeit) ---------- */
+const queue = {};
+function save(name) {
+  if (!db || !canWrite) { if (!db) toast("Speichern geht hier nicht – nur im Claude-Viewer"); return; }
+  const body = JSON.parse(JSON.stringify(acct[name]));
+  const q = queue[name] || (queue[name] = { busy: false, next: null });
+  q.next = body;
+  if (q.busy) return;
+  (async function run() {
+    while (q.next) {
+      const b = q.next; q.next = null; q.busy = true;
+      try { await db.doc("acct/" + name).set(b); }
+      catch (e) { if (e && e.code === "invalid_argument") { canWrite = false; toast("Speichern nicht erlaubt"); } else toast("Speichern fehlgeschlagen – versuch es nochmal"); }
+    }
+    q.busy = false;
+  })();
+}
+let toastT;
+function toast(msg) {
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = msg;
+  document.querySelectorAll(".toast").forEach(t => t.remove()); document.body.appendChild(el);
+  clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 2400);
+}
+
+/* ---------- Hilfsfunktionen ---------- */
+const owned = k => !!(acct.chars.map[k] && acct.chars.map[k].own);
+const ownedW = k => !!(acct.weapons.map[k] && acct.weapons.map[k].own);
+const ownedChars = () => DATA.chars.filter(c => owned(c.k));
+function phaseFor(lv) { let p = 0; for (let i = 0; i < 6; i++) if (lv > LV_CAPS[i]) p = i + 1; return p; }
+function serverDay() { const d = new Date(Date.now() + 3600e3 - 4 * 3600e3); return d.getUTCDay(); } /* Europa-Server: UTC+1, Reset 4 Uhr */
+const DAYNAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+function daysUntil(iso) { return Math.ceil((new Date(iso + "T04:00:00+01:00") - Date.now()) / 864e5); }
+function bookSeries(id) { const m = DATA.mats[id]; return m ? m.n.replace(/^Lehren (des|der|von)\s*/i, "").replace(/[„“"]/g, "") : "?"; }
+
+function buildCheck(c, a) {
+  /* Liefert Hinweise [{lvl, text}] und eine Note A–D */
+  const out = []; let pts = 0, max = 0;
+  const lv = a.lv || 1;
+  max += 2; if (lv >= 80) { pts += 2; out.push({ l: "ok", t: `Level ${lv} – gut` }); } else if (lv >= 70) { pts += 1; out.push({ l: "warn", t: `Level ${lv}: auf 80 oder 90 bringen gibt viel mehr Werte` }); } else out.push({ l: "bad", t: `Level ${lv} ist niedrig – zuerst auf 80 leveln` });
+  const t = a.t || [1, 1, 1];
+  const g = gOf(c.k), gt = g ? guideTalents(g) : ["E", "Q"], tWant = gt.map(x => TALN[x]).join(", ");
+  max += 2; const tMin = Math.min(...gt.map(x => t[TALI[x]]));
+  if (tMin >= 8) { pts += 2; out.push({ l: "ok", t: `Talente ${t.join("/")} – stark` }); }
+  else if (tMin >= 6) { pts += 1; out.push({ l: "warn", t: `Talente ${t.join("/")}: ${tWant} auf 8 bringen` }); }
+  else out.push({ l: "bad", t: `Talente ${t.join("/")}: wichtig sind ${tWant} – mindestens 6 anstreben` });
+  if (a.w) {
+    max += 2; const wl = a.wlv || 1, w = WP[a.w];
+    if (wl >= lv - 10) { pts += 2; out.push({ l: "ok", t: `Waffe ${w ? w.n : a.w} auf Level ${wl}` }); }
+    else { pts += wl >= 70 ? 1 : 0; out.push({ l: "warn", t: `Waffe nur Level ${wl} – auf das Level vom Charakter bringen` }); }
+  } else { max += 2; out.push({ l: "warn", t: "Keine Waffe eingetragen" }); }
+  const sup = g ? (a.st && !critBuild(g)) : a.st && (a.st.cr || 0) < 0.3 && ((a.st.em || 0) > 400 || (a.st.er || 0) > 1.7 || (a.st.hp || 0) > 35000 || (a.st.atk || 0) > 3000);
+  if (sup) {
+    out.push({ l: "ok", t: g ? "Laut Guide zählt hier nicht CRIT, sondern: " + g.sub.slice(0, 2).join(", ") : "Support-Build erkannt: wenig CRIT ist hier Absicht" });
+    max += 1; if ((a.st.er || 0) >= 1.2 || (a.st.em || 0) >= 600) { pts += 1; out.push({ l: "ok", t: `Energy Recharge ${pct(a.st.er)}${a.st.em > 300 ? `, Elementarkunde ${fmt(a.st.em)}` : ""}` }); }
+    else out.push({ l: "warn", t: `Energy Recharge ${pct(a.st.er)} – für einen Support eher wenig` });
+  } else if (a.st) {
+    const s = a.st; const cr = s.cr || 0, cd = s.cd || 0, er = s.er || 1;
+    max += 3;
+    if (cr >= 0.5 && cd >= 1.0) { pts += 3; out.push({ l: "ok", t: `CRIT ${pct(cr)} / ${pct(cd)} – sehr gut` }); }
+    else if (cr >= 0.35 && cd >= 0.7) { pts += 2; out.push({ l: "warn", t: `CRIT ${pct(cr)} / ${pct(cd)} – ok, Ziel ca. 60 % / 120 %` }); }
+    else { pts += cr + cd > 0.9 ? 1 : 0; out.push({ l: "bad", t: `CRIT ${pct(cr)} / ${pct(cd)} – wenn die Figur Schaden macht, mehr CRIT auf Artefakten` }); }
+    const ratio = cd / Math.max(cr, 0.01);
+    if (cr > 0.3 && ratio < 1.4) out.push({ l: "warn", t: `Verhältnis ${ratio.toFixed(1).replace(".", ",")} : 1 – zu viel CRIT Rate, mehr CRIT DMG (Ziel 2 : 1)` });
+    if (cr > 0.05 && ratio > 3.2) out.push({ l: "warn", t: `Verhältnis ${ratio.toFixed(1).replace(".", ",")} : 1 – zu wenig CRIT Rate (Ziel 2 : 1)` });
+    max += 1;
+    if (er >= 1.2) { pts += 1; out.push({ l: "ok", t: `Energy Recharge ${pct(er)}` }); }
+    else out.push({ l: "warn", t: `Energy Recharge ${pct(er)} – Burst ist oft nicht bereit, 120 % bis 150 % anstreben` });
+  }
+  if (a.arts) {
+    max += 2; const n = a.arts.length, low = a.arts.filter(x => x.lvl < 16).length;
+    if (n === 5 && low === 0) { pts += 2; out.push({ l: "ok", t: "Alle 5 Artefakte ausgerüstet und gelevelt" }); }
+    else if (n < 5) out.push({ l: "bad", t: `Nur ${n} von 5 Artefakten ausgerüstet` });
+    else { pts += 1; out.push({ l: "warn", t: `${low} Artefakt${low > 1 ? "e" : ""} unter Level 16 – auf +20 leveln` }); }
+    const sets = {}; a.arts.forEach(x => { sets[x.set] = (sets[x.set] || 0) + 1; });
+    const best = Object.entries(sets).sort((x, y) => y[1] - x[1])[0];
+    const anyBonus = (best && best[1] >= 4) || Object.values(sets).filter(v => v >= 2).length >= 2;
+    if (g) {
+      max += 2; const hit = g.sets.find(o => setOptMatch(o, sets));
+      if (hit) { pts += 2; out.push({ l: "ok", t: `Set passt zum Guide: ${setOptName(hit)}` }); }
+      else { pts += anyBonus ? 1 : 0; out.push({ l: "warn", t: `${anyBonus ? "Set-Bonus aktiv, aber der" : "Kein Set-Bonus. Der"} Guide empfiehlt: ${setOptName(g.sets[0])}` }); }
+      const wrong = [["Sanduhr", g.ms.s], ["Kelch", g.ms.g], ["Krone", g.ms.c]].map(([sl, okList]) => { const x = a.arts.find(q => q.slot === sl); return x && !okList.includes(x.main) ? `${sl}: ${okList.join(" oder ")} statt ${x.main}` : ""; }).filter(Boolean);
+      max += 2; pts += Math.max(0, 2 - wrong.length);
+      out.push(wrong.length ? { l: wrong.length > 1 ? "bad" : "warn", t: "Hauptwerte ändern – " + wrong.join("; ") } : { l: "ok", t: "Hauptwerte von Sanduhr, Kelch und Krone passen zum Guide" });
+      if (a.w && (g.w5.includes(a.w) || g.w4.includes(a.w))) out.push({ l: "ok", t: "Die Waffe steht in der Guide-Empfehlung" });
+    }
+    else if (best && best[1] >= 4) out.push({ l: "ok", t: `4er-Set: ${ART[best[0]] ? ART[best[0]].n : best[0]}` });
+    else if (anyBonus) out.push({ l: "ok", t: "Zwei 2er-Sets aktiv" });
+    else out.push({ l: "warn", t: "Kein vollständiger Set-Bonus (4er oder 2+2)" });
+  }
+  const r = max ? pts / max : 0;
+  const grade = r >= .85 ? "A" : r >= .65 ? "B" : r >= .45 ? "C" : "D";
+  return { out, grade, ratio: r, score: Math.round(r * 100) };
+}
+const GRADECOL = { A: "var(--ok)", B: "var(--gold)", C: "var(--warn)", D: "var(--bad)" };
+
+/* ---------- Tabs & Routing ---------- */
+function setTab(t) {
+  if (!TABS.some(x => x[0] === t)) t = "uebersicht";
+  ui.tab = t;
+  if (location.hash.slice(1) !== t) history.replaceState(null, "", "#" + t);
+  render();
+}
+window.addEventListener("hashchange", () => setTab(location.hash.slice(1)));
+function renderTabs() {
+  document.getElementById("tabs").innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${ui.tab === k}"><svg viewBox="0 0 24 24" aria-hidden="true">${TICON[k] || ""}</svg><span>${l}</span></button>`).join("");
+  const p = acct.profile;
+  document.getElementById("who").innerHTML = p.name ? `<b>${esc(p.name)}</b> · AR ${esc(p.ar ?? "–")} · UID <span class="mono">${esc(p.uid ?? "–")}</span><br>${p.updated ? "Stand " + esc(p.updated) : ""}` : `<span>Noch keine Account-Daten</span>`;
+}
+document.getElementById("updBtn").addEventListener("click", () => updateNow());
+document.getElementById("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
+
+function render() {
+  if (!DATA) return;
+  renderTabs();
+  const m = document.getElementById("main");
+  const fn = { uebersicht: vOverview, charaktere: vChars, waffen: vWeapons, artefakte: vArtifacts, material: vMaterial, teams: vTeams, wishes: vWishes, ziele: vGoals, import: vImport }[ui.tab];
+  const keep = document.activeElement && document.activeElement.id;
+  const sel = keep && document.activeElement.selectionStart;
+  m.innerHTML = `<section class="page">${fn()}</section>`;
+  if (ui.tab === "artefakte") evalArtifact();
+  if (keep) { const el = document.getElementById(keep); if (el) { el.focus(); try { if (sel != null) el.setSelectionRange(sel, sel); } catch (e) {} } }
+}
+
+/* ---------- Übersicht ---------- */
+/* Server-Tag (Europa: UTC+1, Wechsel um 4 Uhr) und Woche ab Montag */
+function serverDate() { return new Date(Date.now() + 3600e3 - 4 * 3600e3).toISOString().slice(0, 10); }
+function serverWeek() { const d = new Date(serverDate() + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); }
+function daysToReset() { const d = serverDay(); return d === 1 ? 7 : (8 - d) % 7 || 7; }
+function dailyState() {
+  if (acct.daily.d !== serverDate()) acct.daily = { d: serverDate(), done: [] };
+  if (acct.weekly.w !== serverWeek()) acct.weekly = { w: serverWeek(), boss: 0 };
+  return { done: acct.daily.done || [], boss: acct.weekly.boss || 0 };
+}
+function talentToday(day) {
+  const M = acct.chars.map;
+  return ownedChars().filter(c => { const a = M[c.k], t = a.t || [1, 1, 1], d = (DATA.mats[c.book] || {}).days || [];
+      return (day === 0 || d.includes(day)) && (a.lv || 0) >= 70 && Math.min(t[1], t[2]) < 8; })
+    .sort((x, y) => (M[y.k].lv - M[x.k].lv) || (y.r - x.r));
+}
+function vOverview() {
+  const oc = ownedChars(), p = acct.profile, day = serverDay();
+  const empty = oc.length === 0;
+  const st = dailyState(), tal = talentToday(day);
+  const wishes = Math.floor((p.primos || 0) / 160) + (p.fates || 0);
+  const nb = BANNERS.find(b => daysUntil(b.end) >= 0);
+  const items = [
+    ["auftraege", "4 Tagesaufträge", "und die Belohnung bei Katheryne abholen"],
+    ["resin", "Resin ausgeben", tal.length ? `Talentbücher für ${tal.slice(0, 3).map(c => c.n).join(", ")}${tal.length > 3 ? ` und ${tal.length - 3} mehr` : ""}` : "heute braucht keiner Bücher: Bosse oder Artefakte"],
+    ["expedition", "Expeditionen einsammeln", "und neu losschicken"],
+    ["teekanne", "Teekanne", "Vertrauens-Münzen und Freundschaft abholen"]
+  ];
+  const doneN = items.filter(x => st.done.includes(x[0])).length;
+  return `
+  <div><h1>Heute ist ${DAYNAMES[day]}</h1><p class="lead">Neuer Tag um 4 Uhr · Wochen-Reset in ${daysToReset()} ${daysToReset() === 1 ? "Tag" : "Tagen"} · Spieldaten ${esc(DATA.v)}</p></div>
+  ${empty ? `<div class="notice"><b>Noch leer.</b> Hol deine Daten unter <a href="#import" style="color:var(--gold)">Daten laden</a>.</div>` : ""}
+  <div class="today">
+    <div class="box hero"><div class="row" style="justify-content:space-between"><h2>Tägliche Runde</h2><span class="pill ${doneN === items.length ? "ok" : "gold"}">${doneN} von ${items.length}</span></div>
+      <div class="prog"><i style="width:${doneN / items.length * 100}%"></i></div>
+      <ul class="daily">${items.map(([id, t, sub]) => `<li><label><input type="checkbox" data-daily="${id}" ${st.done.includes(id) ? "checked" : ""}><span><b>${t}</b><span class="note">${esc(sub)}</span></span></label></li>`).join("")}
+        <li class="boss"><span><b>Wochenbosse</b><span class="note">${st.boss >= 3 ? "Die 3 günstigen sind geschafft" : `Noch ${3 - st.boss} zum halben Resin-Preis`}</span></span>
+          <span class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn small" data-boss="-1" aria-label="Wochenboss weniger">−</button><b class="mono" style="min-width:34px;text-align:center">${st.boss}/3</b><button class="btn small" data-boss="1" aria-label="Wochenboss mehr">+</button></span></li></ul>
+    </div>
+    <div class="side">
+      <div class="box"><h3>Banner</h3>${nb ? `<b style="font-size:17px">${esc(bList(nb, nb.five))}</b><span class="note">noch ${daysUntil(nb.end)} Tage${nb.four ? ` · 4★: ${esc(bList(nb, nb.four))}` : ""}</span>` : `<span class="note">Keine Bannerdaten</span>`}
+        <div class="row"><span class="pill gold">${wishes} Wishes</span><span class="pill">Pity ${p.pity ?? 0}</span><span class="pill ${p.guar ? "ok" : ""}">${p.guar ? "garantiert" : "50/50"}</span></div></div>
+      <div class="box"><h3>Dein Account</h3><div class="row"><span class="pill gold">${oc.length} Charaktere</span><span class="pill">${DATA.weapons.filter(w => ownedW(w.k)).length} Waffen</span><span class="pill">AR ${esc(p.ar ?? "–")}</span></div>
+        <a class="btn small" href="#ziele" style="align-self:flex-start">Ziele: ${(acct.goals.list || []).filter(g => g.done).length}/${(acct.goals.list || []).length} erledigt</a></div>
+    </div>
+  </div>
+  ${empty ? "" : todayPlan(day)}`;
+}
+/* Plan für heute: was sich mit deinem Account jetzt wirklich lohnt */
+function todayPlan(day) {
+  const oc = ownedChars(), M = acct.chars.map;
+  const tal = talentToday(day).slice(0, 8);
+  const fixes = [];
+  oc.forEach(c => { const a = M[c.k]; if ((a.lv || 0) < 80 || !a.st) return; const bc = buildCheck(c, a);
+    const x = bc.out.find(o => o.l === "bad") || bc.out.find(o => o.l === "warn"); if (x) fixes.push({ c, x, g: bc.grade, r: bc.ratio }); });
+  fixes.sort((a, b) => (a.x.l === "bad" ? 0 : 1) - (b.x.l === "bad" ? 0 : 1) || b.c.r - a.c.r || a.r - b.r);
+  const lazy = oc.filter(c => c.r === 5 && (M[c.k].lv || 1) <= 40).sort((a, b) => a.n.localeCompare(b.n));
+  return `<div class="plan">
+    <div class="box"><h3>Heute Talente leveln</h3><span class="note">${tal.length ? "Zahl = Skill/Burst jetzt → Ziel" : "Heute braucht keiner deiner Charaktere Bücher."}</span>
+      ${tal.length ? `<div class="minis">${tal.map(c => rosterCell(c, true, `${M[c.k].t[1]}/${M[c.k].t[2]} → 8`)).join("")}</div>` : ""}</div>
+    <div class="box"><h3>Das bringt am meisten</h3>
+      ${fixes.length ? `<div style="display:flex;flex-direction:column;gap:6px">${fixes.slice(0, 4).map(f => `<button class="row linkrow" data-char="${f.c.k}">${avatar(f.c)}<span style="min-width:0"><b>${esc(f.c.n)}</b> <span class="pill" style="color:${GRADECOL[f.g]}">${f.g}</span><br><span class="note">${esc(f.x.t)}</span></span></button>`).join("")}</div>` : `<span class="note">Alle fertigen Charaktere sind gut gebaut.</span>`}</div>
+    ${nextBuildBox()}
+    ${lazy.length ? `<div class="box" style="grid-column:1/-1"><h3>Noch nicht gelevelt (5★)</h3><div class="minis">${lazy.map(c => rosterCell(c, true)).join("")}</div></div>` : ""}
+  </div>`;
+}
+function todayBooks(day) {
+  const seen = new Map();
+  Object.entries(DATA.mats).forEach(([id, m]) => {
+    if (m.r === 2 && m.days && m.days.length && (day === 0 || m.days.includes(day)) && /Talent/i.test(m.ty)) {
+      seen.set(+id, { name: bookSeries(id), dom: m.dom.replace("Domain of Mastery: ", ""), chars: ownedChars().filter(c => c.book === +id) });
+    }
+  });
+  return [...seen.values()].sort((a, b) => b.chars.length - a.chars.length || a.name.localeCompare(b.name));
+}
+
+/* ---------- Charaktere ---------- */
+function vChars() {
+  const f = ui.cf;
+  let list = DATA.chars.filter(c => charMatches(f, c));
+  const lvOf = c => (acct.chars.map[c.k] || {}).lv || 0;
+  list.sort(f.sort === "name" ? (a, b) => a.n.localeCompare(b.n) : f.sort === "lv" ? (a, b) => lvOf(b) - lvOf(a) || b.r - a.r :
+    f.sort === "el" ? (a, b) => ELEMENTS.indexOf(a.e) - ELEMENTS.indexOf(b.e) || b.r - a.r : (a, b) => (owned(b.k) - owned(a.k)) || b.r - a.r || a.n.localeCompare(b.n));
+  const regs = [...new Set(DATA.chars.map(c => c.reg))].sort();
+  return `
+  <div><h1>Charaktere</h1><p class="lead">Farbig = hast du, grau = fehlt. Antippen für Ausrüstung und Build-Check.</p></div>
+  <div class="filters">
+    <input type="search" id="cq" placeholder="Name suchen …" value="${esc(f.q)}" aria-label="Charakter suchen">
+    ${["alle", "habe", "fehlt"].map(o => `<button class="chip" data-cown="${o}" aria-pressed="${f.own === o}">${{ alle: "Alle", habe: "Habe ich", fehlt: "Fehlt" }[o]}</button>`).join("")}
+  </div>
+  <div class="filters"><span class="note">Rolle</span>${ROLES.map(r => `<button class="chip" data-crole="${r}" aria-pressed="${f.role === r}">${r}</button>`).join("")}
+    <span class="note" style="margin-left:8px">Stand</span>${[["gebaut", "Gebaut (ab Lv 80)"], ["ungebaut", "Noch nicht gebaut"]].map(([v, l]) => `<button class="chip" data-cst="${v}" aria-pressed="${f.st === v}">${l}</button>`).join("")}
+    ${f.role || f.st || f.el || f.w || f.r || f.reg || f.q ? '<button class="btn small" id="cfReset">Filter zurücksetzen</button>' : ""}</div>
+  <div class="filters">
+    ${ELEMENTS.map(e => `<button class="chip" data-cel="${e}" aria-pressed="${f.el === e}" style="--el:var(${ELVAR[e]})">${sigil(e, "")}${e}</button>`).join("")}
+    <select id="cw" aria-label="Waffentyp"><option value="">Alle Waffen</option>${WEAPONS.map(w => `<option ${f.w === w ? "selected" : ""}>${w}</option>`).join("")}</select>
+    <select id="cr" aria-label="Seltenheit"><option value="">4★ und 5★</option><option value="5" ${f.r === "5" ? "selected" : ""}>nur 5★</option><option value="4" ${f.r === "4" ? "selected" : ""}>nur 4★</option></select>
+    <select id="creg" aria-label="Region"><option value="">Alle Regionen</option>${regs.map(r => `<option ${f.reg === r ? "selected" : ""}>${r}</option>`).join("")}</select>
+    <select id="csort" aria-label="Sortierung"><option value="rar" ${f.sort === "rar" ? "selected" : ""}>Sortieren: Besitz & Seltenheit</option><option value="lv" ${f.sort === "lv" ? "selected" : ""}>Level</option><option value="el" ${f.sort === "el" ? "selected" : ""}>Element</option><option value="name" ${f.sort === "name" ? "selected" : ""}>Name</option></select>
+  </div>
+  <div class="row" style="justify-content:space-between"><span class="count">${list.length} Charaktere · Zahl unter dem Namen: Level · Skill/Burst</span>
+    <span class="viewsw" role="group" aria-label="Ansicht"><button data-cview="raster" aria-pressed="${ui.cview === "raster"}">Raster</button><button data-cview="karten" aria-pressed="${ui.cview === "karten"}">Karten</button></span></div>
+  ${ui.cview === "karten" ? `<div class="cards big">${list.map(charCard).join("")}</div>` : (() => {
+    const mine = list.filter(c => owned(c.k)), rest = list.filter(c => !owned(c.k));
+    const block = (t, arr) => arr.length ? `<div class="grp"><h2>${t}</h2><span class="count">${arr.length}</span></div><div class="roster">${arr.map(c => rosterCell(c)).join("")}</div>` : "";
+    return f.sort === "rar" ? block("Deine Charaktere", mine) + block("Fehlen dir noch", rest) : `<div class="roster">${list.map(c => rosterCell(c)).join("")}</div>`;
+  })()}`;
+}
+const WSVG = {
+  Schwert: '<path d="M19 3 9.5 12.5M19 3h2v2l-9.5 9.5M8 11l5 5M6 15l3 3M4.5 16.5 3 21l4.5-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  Claymore: '<path d="M18 2 7 13l4 4L22 6V2zM6 12l6 6M4 16l4 4M3 21l3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>',
+  Stangenwaffe: '<path d="M3 21 17 7M17 7l4-4-1 5-3-1zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  Bogen: '<path d="M6 3c8 3 12 7 15 15M6 3l15 15M3 21l9-9M10 21H3v-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  Katalysator: '<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v10M7 12h10" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>'
+};
+const SLOTSVG = {
+  Blume: '<path d="M12 12c-3-4-3-7 0-9 3 2 3 5 0 9zm0 0c4-3 7-3 9 0-2 3-5 3-9 0zm0 0c3 4 3 7 0 9-3-2-3-5 0-9zm0 0c-4 3-7 3-9 0 2-3 5-3 9 0z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.3"/>',
+  Feder: '<path d="M20 3C10 4 5 10 4 20M20 3c0 7-5 12-13 13M9 12h6M7 16h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  Sanduhr: '<path d="M6 3h12M6 21h12M7 3c0 6 10 6 10 9s-10 3-10 9M17 3c0 6-10 6-10 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+  Kelch: '<path d="M6 3h12c0 6-2 9-6 9s-6-3-6-9zM12 12v6M8 21h8" fill="currentColor" fill-opacity=".15" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+  Krone: '<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+};
+const icon = (svg, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+function initials(n) {
+  const w = n.replace(/\(.*\)/, "").trim().split(/\s+/);
+  return w.length > 1 ? (w[0][0] + w[w.length - 1][0]).toUpperCase() : (n.slice(0, 2));
+}
+function setSummary(arts) {
+  const n = {}; (arts || []).forEach(x => n[x.set] = (n[x.set] || 0) + 1);
+  return Object.entries(n).filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1]).map(([id, v]) => ({ id, v: v >= 4 ? 4 : 2 }));
+}
+function rosterCell(c, sm, sub) {
+  const a = acct.chars.map[c.k] || {}; const own = !!a.own;
+  const g = own && (a.lv || a.st) && !sm ? buildCheck(c, a).grade : null;
+  return `<button class="rc${own ? "" : " missing"}${sm ? " sm" : ""}" data-char="${c.k}" aria-label="${esc(c.n)}${own ? `, Level ${a.lv || 1}, C${a.c || 0}` : ", fehlt"}">
+    <span class="ring">${avatar(c)}<span class="eldot" style="--el:var(${ELVAR[c.e]})">${sigil(c.e, "")}</span>${own && !sm ? `<span class="cbadge">C${a.c || 0}</span>` : ""}${g ? `<span class="gdot" style="color:${GRADECOL[g]}" title="Build-Note">${g}</span>` : ""}</span>
+    <span class="nm">${esc(c.n.replace(/\s*\(Reisende\/r\)$/, ""))}</span>
+    <span class="sub">${sub != null ? sub : own ? `Lv ${a.lv || 1}${a.t ? " · " + a.t[1] + "/" + a.t[2] : ""}` : "fehlt"}</span></button>`;
+}
+function charCard(c) {
+  const a = acct.chars.map[c.k] || {}; const own = !!a.own;
+  const g = own && (a.lv || a.st) ? buildCheck(c, a).grade : null;
+  const w = a.w && WP[a.w];
+  const sets = own ? setSummary(a.arts) : [];
+  return `<button class="card ${own ? "" : "missing"} r${c.r}" data-char="${c.k}" style="--el:var(${ELVAR[c.e]})" aria-label="${esc(c.n)}${own ? "" : ", fehlt"}">
+    ${g ? `<span class="flag pill" style="color:${GRADECOL[g]}" title="Build-Note">${g}</span>` : ""}
+    <span class="top">${avatar(c)}<span style="min-width:0"><span class="nm">${esc(c.n)}</span><br><span class="stars">${stars(c.r)}</span> <span class="note">${c.e}</span></span></span>
+    ${own ? `
+      <span class="gearline">${icon(WSVG[c.w] || "")}<span>${w ? `${esc(w.n)} · R${a.wr || 1}` : `<i>keine Waffe eingetragen</i>`}</span></span>
+      <span class="setdots">${sets.length ? sets.map(s => setChip(s.id, s.v + "× " + setName(s.id))).join("") : `<span class="note">${(a.arts || []).length ? "gemischte Artefakte" : "Artefakte unbekannt"}</span>`}</span>
+      <span class="lv">${a.lv ? `<span>Lv ${a.lv}</span>` : ""}<span class="pill gold">C${a.c || 0}</span>${a.t ? `<span>Talente ${a.t.join("/")}</span>` : ""}</span>`
+    : `<span class="meta">${esc(c.w)} · ${esc(c.reg)}</span><span class="lv"><span class="muted">fehlt noch</span></span>`}
+  </button>`;
+}
+function gearTiles(c, a) {
+  const w = a.w && WP[a.w];
+  const bySlot = {}; (a.arts || []).forEach(x => bySlot[x.slot] = x);
+  const ws = w ? wStats(w, a.wlv || 1) : null;
+  const wt = w ? `<button class="gtile click" data-weapon="${w.k}"><div class="gh">${wEmblem(w)}<div style="min-width:0"><div class="gm">${esc(w.n)}</div><div class="stars">${stars(w.r)}</div></div></div>
+      <div class="gs"><span>Level</span><b>${a.wlv || 1}</b><span>Refinement</span><b>R${a.wr || 1}</b>${ws ? `<span>Basis-ATK</span><b>${ws.atk}</b>${ws.sn ? `<span>${esc(ws.sn)}</span><b>${ws.sv}</b>` : ""}` : ""}</div>
+      ${w.pt ? `<div class="note">${esc(w.pn)}: ${wPassive(w, a.wr || 1)}</div>` : ""}</button>`
+    : `<div class="gtile empty">${icon(WSVG[c.w] || "")}keine Waffe</div>`;
+  const at = SLOT_ORDER.map(s => { const x = bySlot[s];
+    if (!x) return `<div class="gtile empty">${icon(SLOTSVG[s])}${s}: leer oder unbekannt</div>`;
+    const sc = artScore(x);
+    return `<div class="gtile art" style="--sc:${setColor(x.set)}"><div class="gh">${PICS()["s:" + x.set] ? `<span class="wemb pic" style="--sz:40px;--sc:${setColor(x.set)}">${picImg("s:" + x.set, setName(x.set))}</span>` : icon(SLOTSVG[s])}<div style="min-width:0"><div class="gm">${s} <span class="pill">+${x.lvl}</span></div><div class="note">${esc(setName(x.set))}</div></div></div>
+      <div class="gs"><span style="color:var(--fg);font-weight:700">${esc(x.main)}</span><b>${x.mainv ? statVal(x.main, x.mainv) : ""}</b>${x.subs.map(q => `<span>${esc(q[0])}</span><b>${statVal(q[0], q[1])}</b>`).join("")}</div>
+      <span class="pill" style="color:${sc.col};align-self:flex-start">${sc.label}</span></div>`; }).join("");
+  const sets = setSummary(a.arts);
+  return `<div class="box"><h3>Ausrüstung</h3>
+    ${sets.length ? `<div class="row">${sets.map(s => setChip(s.id, s.v + "er-Bonus: " + setName(s.id))).join("")}</div>` : ""}
+    <div class="gear">${wt}${at}</div>
+    ${sets.length ? sets.map(s => { const S = ART[s.id]; return S ? `<p class="note"><b style="color:var(--fg)">${esc(S.n)}</b> – 2 Teile: ${esc(S.p2)}${s.v === 4 ? ` · 4 Teile: ${esc(S.p4)}` : ""}</p>` : ""; }).join("") : ""}
+  </div>`;
+}
+
+function charDrawer(k) {
+  const c = CH[k]; const a = acct.chars.map[k] || {}; const own = !!a.own;
+  const bc = own ? buildCheck(c, a) : null;
+  const wlist = DATA.weapons.filter(w => w.w === c.w).sort((x, y) => (ownedW(y.k) - ownedW(x.k)) || y.r - x.r || x.n.localeCompare(y.n));
+  const st = a.st;
+  const arts = (a.arts || []).slice().sort((x, y) => SLOT_ORDER.indexOf(x.slot) - SLOT_ORDER.indexOf(y.slot));
+  return `<div class="drawer" role="dialog" aria-modal="true" aria-label="${esc(c.n)}">
+    <div class="head">${avatar(c, true)}<div><h2>${esc(c.n)}</h2><div class="stars">${stars(c.r)}</div><div class="note">${esc(c.t)}</div>${own && a.lv ? `<div class="row" style="margin-top:6px"><span class="pill">Lv ${a.lv}</span><span class="pill gold">C${a.c || 0}</span>${a.t ? `<span class="pill">Talente ${a.t.join("/")}</span>` : ""}</div>` : ""}</div><button class="btn small close" data-close>Schließen</button></div>
+    <div class="row"><a class="btn small" href="${esc(c.url)}" target="_blank" rel="noopener">Im Wiki öffnen ↗</a>${picUpload("c:" + k)}</div>
+    <dl class="kv"><dt>Element</dt><dd>${c.e}</dd><dt>Waffe</dt><dd>${c.w}</dd><dt>Region</dt><dd>${esc(c.reg)}${c.aff ? " · " + esc(c.aff) : ""}</dd><dt>Aufstiegswert</dt><dd>${esc(c.sub)}</dd><dt>Talentbuch</dt><dd>${esc(bookSeries(c.book))} (${(DATA.mats[c.book] || { days: [] }).days.map(d => DAYNAMES[d].slice(0, 2)).join(", ")})</dd>${c.bd ? `<dt>Geburtstag</dt><dd>${c.bd.split("/").reverse().join(".")}.</dd>` : ""}</dl>
+    <label class="row" style="gap:10px;font-weight:700"><input type="checkbox" id="ownChk" data-own="${k}" ${own ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--gold)"> Diesen Charakter habe ich</label>
+    ${own ? "" : guideBox(c, a)}
+    ${own ? `
+    ${gearTiles(c, a)}
+    <div class="box"><div class="row" style="gap:14px;align-items:center"><div class="grade" style="color:${GRADECOL[bc.grade]}">${bc.grade}</div><div><h3>Build-Check · ${bc.score} von 100</h3><p class="note" style="margin:2px 0 0">${st ? "Aus deinen echten Werten im Spiel." : "Ohne Artefakt-Werte nur grob. Lade deine Vitrine unter „Daten laden“ für den vollen Check."}</p></div></div>
+      <ul class="check">${bc.out.map(x => `<li class="${x.l}"><span>${esc(x.t)}</span></li>`).join("")}</ul></div>
+    ${guideBox(c, a)}
+    ${st ? `<div class="box"><h3>Werte im Spiel</h3><dl class="kv">
+      <dt>Max. HP</dt><dd>${fmt(st.hp)}</dd><dt>ATK</dt><dd>${fmt(st.atk)}</dd><dt>DEF</dt><dd>${fmt(st.def)}</dd><dt>Elementarkunde</dt><dd>${fmt(st.em)}</dd>
+      <dt>CRIT Rate</dt><dd>${pct(st.cr)}</dd><dt>CRIT DMG</dt><dd>${pct(st.cd)}</dd><dt>Energy Recharge</dt><dd>${pct(st.er)}</dd><dt>${c.e}-Schaden</dt><dd>${pct(st.dmg || 0)}</dd>
+    </dl></div>` : ""}
+    <details class="edit box" ${ui.editOpen ? "open" : ""}><summary>Stand selbst bearbeiten</summary>
+      <div class="fields">
+        <label class="field">Level<select data-cf="lv">${[1, 20, 40, 50, 60, 70, 80, 90, 95, 100].concat(a.lv && ![1, 20, 40, 50, 60, 70, 80, 90, 95, 100].includes(a.lv) ? [a.lv] : []).sort((x, y) => x - y).map(v => `<option ${a.lv == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="field">Constellation<select data-cf="c">${[0, 1, 2, 3, 4, 5, 6].map(v => `<option value="${v}" ${(a.c || 0) == v ? "selected" : ""}>C${v}</option>`).join("")}</select></label>
+        ${["Normal", "Skill (E)", "Burst (Q)"].map((n, i) => `<label class="field">${n}<select data-ct="${i}">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option ${(a.t || [1, 1, 1])[i] == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>`).join("")}
+      </div>
+      <div class="fields">
+        <label class="field" style="grid-column:span 2">Waffe<select data-cf="w"><option value="">– keine –</option>${wlist.map(w => `<option value="${w.k}" ${a.w === w.k ? "selected" : ""}>${stars(w.r)} ${esc(w.n)}${ownedW(w.k) ? " ✓" : ""}</option>`).join("")}</select></label>
+        <label class="field">Waffen-Level<select data-cf="wlv">${[1, 20, 40, 50, 60, 70, 80, 90].concat(a.wlv && ![1, 20, 40, 50, 60, 70, 80, 90].includes(a.wlv) ? [a.wlv] : []).sort((x, y) => x - y).map(v => `<option ${(a.wlv || 1) == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="field">Refinement<select data-cf="wr">${[1, 2, 3, 4, 5].map(v => `<option ${(a.wr || 1) == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      </div>
+    </details>
+    ` : `<p class="note">Hake an, dass du den Charakter hast, dann kannst du Level, Talente und Waffe eintragen.</p>`}
+    <div class="row">${own ? `<button class="btn primary" data-optfor="${k}">Artefakte optimieren</button>` : ""}<button class="btn ${own ? "" : "primary"}" data-plan="${k}">Materialien planen</button><button class="btn" data-goal="${k}">Als Ziel merken</button></div>
+  </div>`;
+}
+function artRow(x) {
+  const sc = artScore(x);
+  return `<div style="border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px">
+    <div class="row" style="justify-content:space-between"><b>${esc(x.slot)} · ${esc(ART[x.set] ? ART[x.set].n : x.set)}</b><span class="row" style="gap:6px"><span class="pill">+${x.lvl}</span><span class="pill" style="color:${sc.col}">${sc.label}</span></span></div>
+    <div class="note"><b style="color:var(--fg)">${esc(x.main)} ${statVal(x.main, x.mainv)}</b> · ${x.subs.map(s => esc(s[0]) + " " + statVal(s[0], s[1])).join(" · ")}</div>
+  </div>`;
+}
+function statVal(name, v) { return PCT_PROPS.has(name) ? (+v).toFixed(1).replace(".", ",") + " %" : fmt(v); }
+function artScore(x) {
+  /* CRIT-Wert (2 × CRIT Rate + CRIT DMG) aus den Nebenwerten – grobe Faustregel */
+  let cv = 0; (x.subs || []).forEach(([n, v]) => { if (n === "CRIT Rate") cv += 2 * v; if (n === "CRIT DMG") cv += +v; });
+  const lvl = x.lvl || 0;
+  const target = lvl >= 20 ? [30, 20] : [12 + lvl, 6 + lvl / 2];
+  if (cv >= target[0]) return { cv, label: `Top · CV ${cv.toFixed(0)}`, col: "var(--ok)", v: "behalten" };
+  if (cv >= target[1]) return { cv, label: `Gut · CV ${cv.toFixed(0)}`, col: "var(--gold)", v: "behalten" };
+  return { cv, label: `Schwach · CV ${cv.toFixed(0)}`, col: "var(--warn)", v: "ersetzen" };
+}
+
+/* ---------- Waffen ---------- */
+/* ---------- Bilder, Embleme, Waffen-Details ---------- */
+const PICS = () => (acct.pics && acct.pics.map) || {};
+function hue(s) { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 360; }
+const setColor = id => `hsl(${hue(id)} 60% 64%)`;
+function setChip(id, label) { const u = PICS()["s:" + id]; return `<span class="pill setpill" style="--sc:${setColor(id)}">${u ? `<img src="${esc(u)}" alt="" style="width:18px;height:18px;border-radius:4px;object-fit:cover">` : "<i></i>"}${esc(label || setName(id))}</span>`; }
+function picImg(key, alt) { const u = PICS()[key]; return u ? `<img src="${esc(u)}" alt="${esc(alt)}" loading="lazy">` : ""; }
+/* Nur PC-Version: eigenes Bild aus dem Ordner "bilder" neben index.html (englischer oder deutscher Name). Fehlt es, bleibt das Abzeichen. */
+function charPic(c) { const u = PICS()["c:" + c.k]; return u ? `<img class="lpic" src="${esc(u)}" alt="" loading="lazy">` : localPic(c); }
+function localPic(c) {
+  if (!window.KOMPASS_LOCAL) return "";
+  const f = n => "bilder/" + encodeURIComponent(n) + ".png";
+  return `<img class="lpic" src="${f(c.en)}" data-alt="${c.n !== c.en ? f(c.n) : ""}" alt="" loading="lazy" onerror="if(this.dataset.alt){this.src=this.dataset.alt;this.dataset.alt=''}else this.remove()">`;
+}
+const WICON = { Schwert: "⚔️", Claymore: "🪓", Stangenwaffe: "🔱", Bogen: "🏹", Katalysator: "🔮" };
+const EKURZ = { Anemo: "ANE", Geo: "GEO", Electro: "ELE", Dendro: "DEN", Hydro: "HYD", Pyro: "PYR", Cryo: "CRY", Keins: "–" };
+const STARSVG = {};
+function starSvg(k) {
+  if (STARSVG[k]) return STARSVG[k];
+  let h = 2166136261; for (const ch of k) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 1000) / 1000; };
+  const n = 5 + Math.floor(rnd() * 3), pts = [];
+  for (let i = 0; i < n; i++) { const a = (i / n) * 6.283 + rnd() * 0.9, d = 16 + rnd() * 26; pts.push([(50 + Math.cos(a) * d).toFixed(1), (50 + Math.sin(a) * d).toFixed(1)]); }
+  return STARSVG[k] = `<svg class="cst" viewBox="0 0 100 100" aria-hidden="true"><path d="${pts.map((q, i) => (i ? "L" : "M") + q[0] + " " + q[1]).join("")}" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.1"/>${pts.map((q, i) => `<circle cx="${q[0]}" cy="${q[1]}" r="${i % 3 ? 1.7 : 2.9}" fill="#fff" fill-opacity=".92"/>`).join("")}</svg>`;
+}
+function avatar(c, lg) {
+  return `<span class="ava r${c.r} e-${String(c.e).toLowerCase()}${lg ? " lg" : ""}" title="${esc(c.e)} · ${esc(c.w)} · ${c.r}★" aria-hidden="true"><span class="core">${starSvg(c.k)}<span class="ini">${esc(initials(c.n))}</span><svg class="wg" viewBox="0 0 24 24">${WSVG[c.w] || ""}</svg>${charPic(c)}</span></span>`;
+}
+
+const SUBTXT = { FIGHT_PROP_ATTACK_PERCENT: "ATK%", FIGHT_PROP_HP_PERCENT: "HP%", FIGHT_PROP_DEFENSE_PERCENT: "DEF%", FIGHT_PROP_CRITICAL: "CRIT Rate", FIGHT_PROP_CRITICAL_HURT: "CRIT DMG",
+  FIGHT_PROP_CHARGE_EFFICIENCY: "Energy Recharge", FIGHT_PROP_ELEMENT_MASTERY: "Elementarkunde", FIGHT_PROP_PHYSICAL_ADD_HURT: "Physischer Schaden" };
+function wStats(w, lv) {
+  const L = [1, 20, 40, 50, 60, 70, 80, 90]; const lvs = w.lvs || {};
+  let use = 1; L.forEach(x => { if (x <= (lv || 90)) use = x; });
+  const v = lvs[use] || lvs["90"]; if (!v) return null;
+  const sn = SUBTXT[w.subt] || w.sub || "";
+  const sv = !w.subt ? "" : w.subt === "FIGHT_PROP_ELEMENT_MASTERY" ? fmt(v[1]) : (v[1] * 100).toFixed(1).replace(".", ",") + " %";
+  return { lv: use, atk: v[0], sn, sv };
+}
+function wPassive(w, r) {
+  if (!w.pt) return "";
+  const pv = w.pv || []; let i = Math.max(0, Math.min(4, (r || 1) - 1));
+  while (i > 0 && !(pv[i] || []).length) i--; // Waffen ohne höhere Refinements (z. B. Schwert der Niederkunft)
+  const vals = pv[i] || [];
+  return w.pt.replace(/\{(\d+)\}/g, (m, i) => vals[+i] != null ? `<b>${esc(vals[+i])}</b>` : m).replace(/\{[^}]*\}/g, "");
+}
+function wEmblem(w, lg) {
+  const img = picImg("w:" + w.k, w.n);
+  return `<span class="wemb r${w.r}${lg ? " lg" : ""}${img ? " pic" : ""}" aria-hidden="true" style="--sc:${setColor(w.k)}">${img || icon(WSVG[w.w] || "")}</span>`;
+}
+function wearersOf() { const m = {}; Object.entries(acct.chars.map).forEach(([k, a]) => { if (a.own && a.w) (m[a.w] = m[a.w] || []).push(k); }); return m; }
+function weaponDrawer(k) {
+  const w = WP[k]; const m = acct.weapons.map[k] || {}; const wear = wearersOf()[k] || [];
+  const has = !!m.own || wear.length > 0;
+  const lvOf = wear.length ? (acct.chars.map[wear[0]].wlv || 90) : 90;
+  const r = wear.length ? (acct.chars.map[wear[0]].wr || 1) : (m.r || 1);
+  const s = wStats(w, lvOf), s90 = wStats(w, 90);
+  return `<div class="drawer" role="dialog" aria-modal="true" aria-label="${esc(w.n)}">
+    <div class="head">${wEmblem(w, true)}<div><h2>${esc(w.n)}</h2><div class="stars">${stars(w.r)}</div><div class="note">${esc(w.w)} · englisch: ${esc(w.en)}</div></div><button class="btn small close" data-close>Schließen</button></div>
+    <div class="row"><a class="btn small" href="${esc(w.url)}" target="_blank" rel="noopener">Bild & Wiki öffnen ↗</a>${picUpload("w:" + k)}</div>
+    <div class="box"><h3>Werte</h3><dl class="kv">
+      ${s && wear.length ? `<dt>Basis-ATK (Lv ${s.lv})</dt><dd>${s.atk}</dd>${s.sn ? `<dt>${esc(s.sn)} (Lv ${s.lv})</dt><dd>${s.sv}</dd>` : ""}` : ""}
+      ${s90 ? `<dt>Basis-ATK (Lv 90)</dt><dd>${s90.atk}</dd>${s90.sn ? `<dt>${esc(s90.sn)} (Lv 90)</dt><dd>${s90.sv}</dd>` : ""}` : ""}
+      <dt>Refinement</dt><dd>R${r}</dd></dl></div>
+    ${w.pt ? `<div class="box"><h3>Passiv: ${esc(w.pn)} (R${r})</h3><p style="margin:0">${wPassive(w, r)}</p>${r < 5 && ((w.pv || [])[4] || []).length ? `<p class="note">Mit R5: ${wPassive(w, 5)}</p>` : ""}</div>` : ""}
+    <div class="box"><h3>Wer trägt sie</h3>${wear.length ? wear.map(ck => { const c = CH[ck]; const a = acct.chars.map[ck]; return `<button class="row linkrow" data-char="${ck}">${avatar(c)}<span><b>${esc(c.n)}</b><br><span class="note">Waffe Lv ${a.wlv || "?"} · R${a.wr || 1}</span></span></button>`; }).join("") : `<p class="note">${has ? "Liegt im Inventar." : "Hast du (noch) nicht."}</p>`}</div>
+    <label class="row" style="gap:10px;font-weight:700"><input type="checkbox" data-wown-k="${k}" ${has ? "checked" : ""} ${wear.length ? "disabled" : ""} style="width:20px;height:20px;accent-color:var(--gold)"> Diese Waffe habe ich${wear.length ? " (wird getragen)" : ""}</label>
+  </div>`;
+}
+function picUpload(key) {
+  const has = !!PICS()[key];
+  return `<label class="btn small" style="cursor:pointer">${has ? "Eigenes Bild ändern" : "Eigenes Bild hinzufügen"}<input type="file" accept="image/*" data-pic="${esc(key)}" hidden></label>${has ? `<button class="btn small danger" data-picdel="${esc(key)}">Bild entfernen</button>` : ""}`;
+}
+let assetsNs = null;
+async function uploadPic(key, file) {
+  if (!assetsNs) { try { assetsNs = await window.claude.use("assets"); } catch (e) { assetsNs = null; } }
+  if (!assetsNs) { toast("Bilder hochladen geht hier nicht"); return; }
+  if (file.size > 4 * 1024 * 1024) { toast("Bild ist zu groß (max. 4 MB)"); return; }
+  toast("Lade Bild hoch …");
+  try {
+    const r = await assetsNs.upload(file);
+    acct.pics = acct.pics || { map: {} }; acct.pics.map = acct.pics.map || {}; acct.pics.map[key] = r.url;
+    save("pics"); toast("Bild gespeichert"); refreshLayer(); render();
+  } catch (e) { toast("Hochladen fehlgeschlagen"); }
+}
+/* Mehrere eigene Bilder: Dateiname -> Charakter, Waffe oder Set */
+const normName = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/[^a-z0-9]/g, "");
+function picIndex() {
+  const ix = {};
+  const add = (n, key) => { const k = normName(n); if (k && !ix[k]) ix[k] = key; };
+  DATA.chars.forEach(c => { add(c.n, "c:" + c.k); add(c.en, "c:" + c.k); add(c.k, "c:" + c.k); add(c.n.replace(/\s*\(.*\)$/, ""), "c:" + c.k); });
+  DATA.weapons.forEach(w => { add(w.n, "w:" + w.k); add(w.en, "w:" + w.k); add(w.k, "w:" + w.k); });
+  DATA.artifacts.forEach(a => { add(a.n, "s:" + a.id); add(a.en, "s:" + a.id); });
+  return ix;
+}
+async function bulkPics(files) {
+  if (!assetsNs) { try { assetsNs = await window.claude.use("assets"); } catch (e) { assetsNs = null; } }
+  if (!assetsNs) { toast("Bilder hochladen geht hier nicht"); return; }
+  const ix = picIndex(); const ok = [], unknown = [], failed = [];
+  acct.pics = acct.pics || { map: {} }; acct.pics.map = acct.pics.map || {};
+  let i = 0;
+  for (const f of files) {
+    i++; ui.imp.bulk = `Lade ${i} von ${files.length} …`; const st2 = document.getElementById("bulkStatus"); if (st2) st2.textContent = ui.imp.bulk;
+    const key = ix[normName(f.name)];
+    if (!key) { unknown.push(f.name); if (isImg(f) && ui.unm.length < 60) ui.unm.push({ file: f, url: URL.createObjectURL(f) }); continue; }
+    if (f.size > 4 * 1024 * 1024) { failed.push(f.name + " (zu groß)"); continue; }
+    try { const r = await assetsNs.upload(f); acct.pics.map[key] = r.url; ok.push(f.name); }
+    catch (e) { failed.push(f.name); }
+  }
+  if (ok.length) save("pics");
+  ui.imp.bulk = `${ok.length} ${ok.length === 1 ? "Bild" : "Bilder"} zugeordnet.`;
+  ui.imp.bulkOut = `${unknown.length ? `<p class="note"><b style="color:var(--warn)">${unknown.length} nicht erkannt.</b> Ordne sie unten mit einem Klick zu.</p>` : ""}${failed.length ? `<p class="note"><b style="color:var(--bad)">Fehlgeschlagen:</b> ${failed.map(esc).join(", ")}</p>` : ""}`;
+  render();
+}
+function refreshLayer() { if (layer.dataset.char) openChar(layer.dataset.char); else if (layer.dataset.weapon) openWeapon(layer.dataset.weapon); }
+function openWeapon(k) { layer.innerHTML = `<div class="scrim" data-scrim>${weaponDrawer(k)}</div>`; delete layer.dataset.char; layer.dataset.weapon = k; const b = layer.querySelector("[data-close]"); if (b) b.focus(); }
+
+function vWeapons() {
+  const f = ui.wf; const wear = wearersOf();
+  const has = w => ownedW(w.k) || !!wear[w.k];
+  let list = DATA.weapons.filter(w => (w.r || 0) >= 3 &&
+    (!f.q || (w.n + " " + w.en).toLowerCase().includes(f.q.toLowerCase())) && (!f.w || w.w === f.w) && (!f.r || w.r === +f.r) &&
+    (f.own === "alle" || (f.own === "habe" ? has(w) : !has(w))));
+  list.sort((a, b) => (has(b) - has(a)) || b.r - a.r || a.n.localeCompare(b.n));
+  return `
+  <div><h1>Waffen</h1><p class="lead">Antippen für Werte, Passiv und wer sie trägt.</p></div>
+  <div class="filters">
+    <input type="search" id="wq" placeholder="Waffe suchen (deutsch oder englisch) …" value="${esc(f.q)}" aria-label="Waffe suchen">
+    ${["alle", "habe", "fehlt"].map(o => `<button class="chip" data-wown="${o}" aria-pressed="${f.own === o}">${{ alle: "Alle", habe: "Habe ich", fehlt: "Fehlt" }[o]}</button>`).join("")}
+    <select id="ww" aria-label="Waffentyp"><option value="">Alle Typen</option>${WEAPONS.map(w => `<option ${f.w === w ? "selected" : ""}>${w}</option>`).join("")}</select>
+    <select id="wr" aria-label="Seltenheit"><option value="">3★ bis 5★</option>${[5, 4, 3].map(r => `<option value="${r}" ${f.r == r ? "selected" : ""}>nur ${r}★</option>`).join("")}</select>
+  </div>
+  <div class="row" style="justify-content:space-between"><span class="count">${list.length} Waffen · ${list.filter(has).length} davon hast du</span>
+    <span class="viewsw" role="group" aria-label="Ansicht"><button data-wview="kacheln" aria-pressed="${ui.wview === "kacheln"}">Kacheln</button><button data-wview="karten" aria-pressed="${ui.wview === "karten"}">Karten</button></span></div>
+  ${ui.wview === "kacheln" ? `<div class="wgrid">${list.map(w => { const h = has(w); const m = acct.weapons.map[w.k] || {}; const ws = wear[w.k] || []; const r = ws.length ? acct.chars.map[ws[0]].wr : m.r;
+    return `<button class="wt r${w.r}${h ? "" : " missing"}" data-weapon="${w.k}" aria-label="${esc(w.n)}${h ? "" : ", fehlt"}">${h && r ? `<span class="rk">R${r}</span>` : ""}${wEmblem(w)}<span class="nm">${esc(w.n)}</span><span class="sub">${h ? (ws.length ? ws.map(k => esc(CH[k].n)).join(", ") : "im Inventar") : esc(w.w)}</span></button>`; }).join("")}</div>` : ""}
+  ${ui.wview === "kacheln" ? "" : `<div class="cards big">${list.map(w => { const h = has(w); const m = acct.weapons.map[w.k] || {}; const ws = wear[w.k] || [];
+    const a0 = ws.length ? acct.chars.map[ws[0]] : null; const s = wStats(w, a0 ? a0.wlv : 90);
+    return `<button class="card ${h ? "" : "missing"} r${w.r}" data-weapon="${w.k}" style="--el:${setColor(w.k)}" aria-label="${esc(w.n)}${h ? "" : ", fehlt"}">
+      <span class="top">${wEmblem(w)}<span style="min-width:0"><span class="nm">${esc(w.n)}</span><br><span class="stars">${stars(w.r)}</span> <span class="note">${esc(w.w)}</span></span></span>
+      ${s ? `<span class="gearline"><span>ATK <b class="mono" style="color:var(--fg)">${s.atk}</b>${s.sn ? ` · ${esc(s.sn)} <b class="mono" style="color:var(--fg)">${s.sv}</b>` : ""} <span class="muted">(Lv ${s.lv})</span></span></span>` : ""}
+      ${w.pn ? `<span class="note">Passiv: ${esc(w.pn)}</span>` : ""}
+      <span class="lv">${h ? `${(a0 ? a0.wr : m.r) ? `<span class="pill gold">R${a0 ? a0.wr : m.r}</span>` : ""}${ws.length ? `<span class="wear">${ws.map(k => `<span class="row" style="gap:4px;display:inline-flex">${esc(CH[k].n)}</span>`).join(", ")}</span>` : `<span>im Inventar</span>`}` : `<span class="muted">fehlt</span>`}</span>
+    </button>`; }).join("")}</div>`}`;
+}
+
+/* ---------- Artefakte ---------- */
+const SLOT_MAINS = {
+  Sanduhr: ["ATK%", "HP%", "DEF%", "Energy Recharge", "Elementarkunde"],
+  Kelch: ["Pyro-Schaden", "Hydro-Schaden", "Anemo-Schaden", "Electro-Schaden", "Dendro-Schaden", "Cryo-Schaden", "Geo-Schaden", "Physischer Schaden", "ATK%", "HP%", "DEF%", "Elementarkunde"],
+  Krone: ["CRIT Rate", "CRIT DMG", "CRIT", "Heilbonus", "ATK%", "HP%", "DEF%", "Elementarkunde"]
+};
+function setName(id) { return ART[id] ? ART[id].n : (id || "?"); }
+function whoName(k) { return k && CH[k] ? CH[k].n : ""; }
+function artLine(x) { return `${esc(x.main)} · ${x.subs.map(s => esc(s[0]) + " " + statVal(s[0], s[1])).join(" · ")}`; }
+
+function vArtifacts() {
+  const all = allArtifacts();
+  const free = all.filter(x => !x.loc).length;
+  const scanned = ARTS.length > 0;
+  const sub = [["inv", `Inventar (${all.length})`], ["frei", `Freie (${free})`], ["opt", "Build-Helfer"], ["info", "Bewerten & Sets"]];
+  return `
+  <div><h1>Artefakte</h1><p class="lead">${scanned ? `Wer trägt was, was ist frei, was passt am besten.` : `Du siehst die Artefakte, die deine Charaktere tragen. Freie Artefakte kennt die Seite erst nach einem <a href="#import" style="color:var(--gold)">Inventar-Scan</a>.`}</p></div>
+  <div class="filters">${sub.map(([k, l]) => `<button class="chip" data-af="${k}" aria-pressed="${ui.af === k}">${l}</button>`).join("")}</div>
+  ${ui.af === "inv" ? vArtInv(all) : ui.af === "frei" ? vArtFree(all) : ui.af === "opt" ? vArtOpt(all) : vArtInfo()}`;
+}
+
+function vArtInv(all) {
+  const f = ui.aff;
+  const w = PRESETS.atk.w;
+  let list = all.filter(x => (!f.slot || x.slot === f.slot) && (!f.set || x.set === f.set) &&
+    (f.where === "alle" || (f.where === "frei" ? !x.loc : !!x.loc)) &&
+    (!f.q || (setName(x.set) + " " + whoName(x.loc) + " " + x.main + " " + x.subs.map(s => s[0]).join(" ")).toLowerCase().includes(f.q.toLowerCase())));
+  list = list.map(x => ({ x, cv: artScore(x).cv, v: artValue(x, w) }));
+  list.sort(f.sort === "lvl" ? (a, b) => b.x.lvl - a.x.lvl : f.sort === "wer" ? (a, b) => whoName(a.x.loc).localeCompare(whoName(b.x.loc)) || SLOT_ORDER.indexOf(a.x.slot) - SLOT_ORDER.indexOf(b.x.slot) : (a, b) => b.cv - a.cv);
+  const sets = [...new Set(all.map(x => x.set))].sort((a, b) => setName(a).localeCompare(setName(b)));
+  const shown = list.slice(0, 300);
+  return `
+  <div class="filters">
+    <input type="search" id="aq" placeholder="Suchen: Set, Charakter, Wert …" value="${esc(f.q)}" aria-label="Artefakte suchen">
+    <select id="aslot" aria-label="Teil"><option value="">Alle Teile</option>${SLOT_ORDER.map(s => `<option ${f.slot === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+    <select id="aset" aria-label="Set"><option value="">Alle Sets</option>${sets.map(s => `<option value="${esc(s)}" ${f.set === s ? "selected" : ""}>${esc(setName(s))}</option>`).join("")}</select>
+    <select id="awhere" aria-label="Status"><option value="alle" ${f.where === "alle" ? "selected" : ""}>Getragen & frei</option><option value="frei" ${f.where === "frei" ? "selected" : ""}>Nur freie</option><option value="getragen" ${f.where === "getragen" ? "selected" : ""}>Nur getragene</option></select>
+    <select id="asort" aria-label="Sortierung"><option value="wert" ${f.sort === "wert" ? "selected" : ""}>Sortieren: CRIT-Wert</option><option value="lvl" ${f.sort === "lvl" ? "selected" : ""}>Level</option><option value="wer" ${f.sort === "wer" ? "selected" : ""}>Wer trägt es</option></select>
+  </div>
+  <div class="count">${list.length} Artefakte${list.length > shown.length ? ` · die ersten ${shown.length} werden gezeigt, filtere für mehr` : ""}</div>
+  <div class="tbl"><table><thead><tr><th>Teil</th><th>Set</th><th>Hauptwert</th><th>Nebenwerte</th><th class="n">Lv</th><th>Trägt</th><th>CRIT-Wert</th></tr></thead><tbody>
+    ${shown.map(({ x }) => { const sc = artScore(x); return `<tr><td>${x.slot}</td><td>${setChip(x.set)} <span class="stars">${stars(x.r)}</span></td><td><b>${esc(x.main)}</b></td><td class="note">${x.subs.map(s => esc(s[0]) + " " + statVal(s[0], s[1])).join(", ")}</td><td class="n">+${x.lvl}</td><td>${x.loc ? esc(whoName(x.loc) || x.loc) : '<span class="pill ok">frei</span>'}</td><td><span class="pill" style="color:${sc.col}">${sc.label}</span></td></tr>`; }).join("")}
+  </tbody></table></div>`;
+}
+
+function vArtFree(all) {
+  const free = all.filter(x => !x.loc);
+  if (!ARTS.length) return `<div class="notice"><b>Noch kein Inventar-Scan.</b> Freie Artefakte sieht man nur mit einem Scan deines ganzen Inventars. Wie das geht, steht unter <a href="#import" style="color:var(--gold)">Daten laden</a>.</div>`;
+  const good = free.filter(x => x.r === 5 && artScore(x).v === "behalten").sort((a, b) => artScore(b).cv - artScore(a).cv);
+  const fodder = free.filter(x => !x.lk && (x.r < 5 || (x.lvl === 0 && artScore(x).cv < 6) || (x.lvl >= 8 && artScore(x).v === "ersetzen")));
+  const bySet = {}; free.filter(x => x.r === 5).forEach(x => { const s = bySet[x.set] || (bySet[x.set] = { n: 0, slots: {} }); s.n++; s.slots[x.slot] = (s.slots[x.slot] || 0) + 1; });
+  const setRows = Object.entries(bySet).sort((a, b) => b[1].n - a[1].n);
+  return `
+  <div class="tiles">
+    <div class="tile"><span class="lbl">Frei</span><span class="big">${free.length}</span><span class="note">von ${all.length} Artefakten</span></div>
+    <div class="tile"><span class="lbl">Gute freie</span><span class="big">${good.length}</span><span class="note">5★ mit gutem CRIT-Wert</span></div>
+    <div class="tile"><span class="lbl">Futter</span><span class="big">${fodder.length}</span><span class="note">kannst du verwerten</span></div>
+  </div>
+  <div class="box"><h3>Freie 5★-Artefakte nach Set</h3><p class="note">Ein vollständiges 4er-Set hast du frei, wenn bei mindestens 4 Teilen eine Zahl steht.</p>
+    <div class="tbl"><table><thead><tr><th>Set</th>${SLOT_ORDER.map(s => `<th class="n">${s}</th>`).join("")}<th class="n">Summe</th></tr></thead><tbody>
+    ${setRows.map(([id, s]) => { const full = SLOT_ORDER.filter(sl => s.slots[sl]).length >= 4; return `<tr><td><b>${esc(setName(id))}</b>${full ? ' <span class="pill ok">4er möglich</span>' : ""}</td>${SLOT_ORDER.map(sl => `<td class="n ${s.slots[sl] ? "" : "muted"}">${s.slots[sl] || "–"}</td>`).join("")}<td class="n">${s.n}</td></tr>`; }).join("")}
+    </tbody></table></div></div>
+  <div class="box"><h3>Die besten freien Artefakte</h3>${good.length ? `<div class="tbl"><table><thead><tr><th>Teil</th><th>Set</th><th>Werte</th><th class="n">Lv</th><th>CRIT-Wert</th></tr></thead><tbody>
+    ${good.slice(0, 60).map(x => { const sc = artScore(x); return `<tr><td>${x.slot}</td><td class="note">${esc(setName(x.set))}</td><td class="note">${artLine(x)}</td><td class="n">+${x.lvl}</td><td><span class="pill" style="color:${sc.col}">${sc.label}</span></td></tr>`; }).join("")}
+    </tbody></table></div>` : `<p class="note">Keine freien 5★-Artefakte mit gutem CRIT-Wert.</p>`}</div>
+  <div class="box"><h3>Futter-Kandidaten</h3><p class="note">Frei, nicht gesperrt und schwach: 4★ und darunter, oder 5★ ohne gute Nebenwerte. Prüfe trotzdem kurz, ob ein Support den Wert brauchen kann (z. B. Energy Recharge oder Elementarkunde).</p>
+    ${fodder.length ? `<div class="tbl"><table><thead><tr><th>Teil</th><th>Set</th><th>Werte</th><th class="n">Lv</th><th class="n">★</th></tr></thead><tbody>
+    ${fodder.slice(0, 80).map(x => `<tr><td>${x.slot}</td><td class="note">${esc(setName(x.set))}</td><td class="note">${artLine(x)}</td><td class="n">+${x.lvl}</td><td class="n">${x.r}</td></tr>`).join("")}
+    </tbody></table></div>${fodder.length > 80 ? `<p class="note">… und ${fodder.length - 80} weitere.</p>` : ""}` : `<p class="note">Nichts zu verwerten.</p>`}</div>`;
+}
+
+/* Build-Helfer: wählt je Teil das beste Artefakt nach Gewichtung, Hauptwerten und optionalem 4er-Set */
+function optimize(all, o) {
+  const P = PRESETS[o.preset] || PRESETS.atk; const w = P.w;
+  const mainOk = (x) => {
+    if (x.slot === "Sanduhr" && o.sands) return x.main === o.sands;
+    if (x.slot === "Kelch" && o.goblet) return x.main === o.goblet;
+    if (x.slot === "Krone" && o.circlet) return o.circlet === "CRIT" ? (x.main === "CRIT Rate" || x.main === "CRIT DMG") : x.main === o.circlet;
+    return true;
+  };
+  const cand = all.filter(x => x.r >= 4 && mainOk(x) && (!o.free || !x.loc || x.loc === o.char) && (!o.lv16 || x.lvl >= 16));
+  const score = x => artValue(x, w) + (x.r === 5 ? 0 : -3) + (x.lvl / 20) * 0.5;
+  const best = (slot, inSet) => cand.filter(x => x.slot === slot && (!inSet || x.set === o.set)).sort((a, b) => score(b) - score(a))[0];
+  const pick = {};
+  if (o.set) {
+    const inS = {}, any = {};
+    SLOT_ORDER.forEach(s => { inS[s] = best(s, true); any[s] = best(s, false); });
+    const have = SLOT_ORDER.filter(s => inS[s]);
+    if (have.length < 4) return { err: `Für ${setName(o.set)} hast du nur ${have.length} passende Teile${o.free ? " frei" : ""}. Für den 4er-Bonus brauchst du 4.` };
+    let bestCombo = null;
+    const opts = have.length === 5 ? [null, ...SLOT_ORDER] : SLOT_ORDER.filter(s => !inS[s]);
+    opts.forEach(off => {
+      let tot = 0; const c = {};
+      SLOT_ORDER.forEach(s => { c[s] = s === off ? any[s] : inS[s]; if (c[s]) tot += score(c[s]); });
+      if (!bestCombo || tot > bestCombo.tot) bestCombo = { tot, c };
+    });
+    Object.assign(pick, bestCombo.c);
+  } else SLOT_ORDER.forEach(s => pick[s] = best(s, false));
+  const sum = {}; SLOT_ORDER.forEach(s => { const x = pick[s]; if (!x) return; x.subs.forEach(([n, v]) => sum[n] = (sum[n] || 0) + +v); });
+  return { pick, sum, score };
+}
+function vArtOpt(all) {
+  const o = ui.opt;
+  const own = ownedChars().sort((a, b) => a.n.localeCompare(b.n));
+  if (!o.char && own.length) o.char = own[0].k;
+  const c = CH[o.char];
+  if (c && !o.goblet && o._for !== c.k) {
+    o._for = c.k; o.goblet = c.e + "-Schaden"; o.circlet = "CRIT"; o.sands = o.preset === "hp" ? "HP%" : o.preset === "def" ? "DEF%" : o.preset === "em" ? "Elementarkunde" : o.preset === "er" ? "Energy Recharge" : "ATK%";
+  }
+  const setsAvail = [...new Set(all.map(x => x.set))].sort((a, b) => setName(a).localeCompare(setName(b)));
+  const res = c ? optimize(all, o) : { err: "Wähle einen Charakter." };
+  const cur = c ? (acct.chars.map[c.k] || {}).arts || [] : [];
+  const w = (PRESETS[o.preset] || PRESETS.atk).w;
+  const curVal = cur.reduce((t, x) => t + artValue(x, w), 0);
+  const newVal = res.pick ? SLOT_ORDER.reduce((t, s) => t + (res.pick[s] ? artValue(res.pick[s], w) : 0), 0) : 0;
+  return `
+  <div class="box"><h3>Was willst du bauen?</h3>
+    <div class="fields">
+      <label class="field" style="grid-column:span 2">Charakter<select id="oChar">${own.map(x => `<option value="${x.k}" ${x.k === o.char ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</select></label>
+      <label class="field" style="grid-column:span 2">Was soll er/sie machen?<select id="oPreset">${Object.entries(PRESETS).map(([k, p]) => `<option value="${k}" ${o.preset === k ? "selected" : ""}>${p.n}</option>`).join("")}</select></label>
+    </div>
+    <div class="fields">
+      <label class="field">Sanduhr<select id="oSands"><option value="">egal</option>${SLOT_MAINS.Sanduhr.map(m => `<option ${o.sands === m ? "selected" : ""}>${m}</option>`).join("")}</select></label>
+      <label class="field">Kelch<select id="oGoblet"><option value="">egal</option>${SLOT_MAINS.Kelch.map(m => `<option ${o.goblet === m ? "selected" : ""}>${m}</option>`).join("")}</select></label>
+      <label class="field">Krone<select id="oCirclet"><option value="">egal</option>${SLOT_MAINS.Krone.map(m => `<option value="${m}" ${o.circlet === m ? "selected" : ""}>${m === "CRIT" ? "CRIT Rate oder DMG" : m}</option>`).join("")}</select></label>
+      <label class="field" style="grid-column:span 2">4er-Set<select id="oSet"><option value="">kein festes Set</option>${setsAvail.map(s => `<option value="${esc(s)}" ${o.set === s ? "selected" : ""}>${esc(setName(s))}</option>`).join("")}</select></label>
+    </div>
+    <div class="row" style="gap:18px">
+      <label class="row" style="gap:8px"><input type="checkbox" id="oFree" ${o.free ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--gold)"> Nur freie Artefakte (und die eigenen)</label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="oLv" ${o.lv16 ? "checked" : ""} style="width:18px;height:18px;accent-color:var(--gold)"> Nur gelevelte (ab +16)</label>
+    </div>
+    ${!ARTS.length ? `<p class="note">Ohne Inventar-Scan kennt der Helfer nur die Artefakte deiner Vitrinen-Charaktere. Schalte „Nur freie“ aus, dann tauscht er zwischen ihnen.</p>` : ""}
+  </div>
+  ${res.err ? `<div class="notice">${esc(res.err)}</div>` : `
+  <div class="box"><div class="row" style="justify-content:space-between"><h3>Vorschlag für ${esc(c.n)}</h3><span class="note">Nebenwert-Punkte: jetzt <b class="mono">${curVal.toFixed(1).replace(".", ",")}</b> → Vorschlag <b class="mono" style="color:${newVal > curVal + .5 ? "var(--ok)" : "var(--fg)"}">${newVal.toFixed(1).replace(".", ",")}</b></span></div>
+    <div class="tbl"><table><thead><tr><th>Teil</th><th>Set</th><th>Werte</th><th class="n">Lv</th><th>Woher</th></tr></thead><tbody>
+    ${SLOT_ORDER.map(s => { const x = res.pick[s]; if (!x) return `<tr><td>${s}</td><td colspan="4" class="miss">Kein passendes Artefakt</td></tr>`;
+      const from = !x.loc ? '<span class="pill ok">frei</span>' : x.loc === c.k ? '<span class="pill">trägt schon</span>' : `<span class="pill warn">von ${esc(whoName(x.loc))}</span>`;
+      return `<tr><td>${s}</td><td class="note">${esc(setName(x.set))}</td><td class="note"><b style="color:var(--fg)">${esc(x.main)}</b> · ${x.subs.map(q => esc(q[0]) + " " + statVal(q[0], q[1])).join(" · ")}</td><td class="n">+${x.lvl}</td><td>${from}</td></tr>`; }).join("")}
+    </tbody></table></div>
+    <h3>Nebenwerte zusammen</h3>
+    <div class="row">${Object.entries(res.sum).filter(([n]) => w[n]).sort((a, b) => (w[b[0]] || 0) - (w[a[0]] || 0)).map(([n, v]) => `<span class="pill gold">${esc(n)} +${statVal(n, v)}</span>`).join("")}</div>
+    <p class="note">Hauptwerte (z. B. CRIT DMG auf der Krone) kommen noch dazu. „von …“ heißt: das Teil trägt gerade ein anderer Charakter – im Spiel nimmst du es ihm beim Ausrüsten weg.</p>
+  </div>`}`;
+}
+
+function vArtInfo() {
+  const sets = DATA.artifacts.filter(s => s.r >= 4 && (!ui.afSet || (s.n + " " + s.en).toLowerCase().includes(ui.afSet.toLowerCase()))).sort((a, b) => a.n.localeCompare(b.n));
+  return `
+  <p class="lead">Erst muss der Hauptwert passen, dann die Nebenwerte. CRIT-Wert ab 30 bei +20 ist top.</p>
+  <div class="grid2">
+    <div class="box"><h3>Artefakt bewerten</h3>
+      <p class="note">Gib ein neues Artefakt ein und du siehst sofort, ob du es leveln oder als Futter verwenden solltest.</p>
+      <div class="fields">
+        <label class="field">Teil<select id="evSlot">${SLOT_ORDER.map(s => `<option>${s}</option>`).join("")}</select></label>
+        <label class="field">Level<input id="evLvl" type="number" min="0" max="20" value="0"></label>
+        <label class="field">CRIT Rate %<input id="evCr" type="number" step="0.1" min="0" value="0"></label>
+        <label class="field">CRIT DMG %<input id="evCd" type="number" step="0.1" min="0" value="0"></label>
+      </div>
+      <label class="field">Hat es einen Wert, den dein Charakter braucht (z. B. ATK %, Energy Recharge, Elementarkunde)?<select id="evUse"><option value="0">Nein</option><option value="1">Ja, einen</option><option value="2">Ja, zwei oder mehr</option></select></label>
+      <div id="evOut"></div>
+    </div>
+    <div class="box"><h3>Hauptwerte – was passt wohin</h3>
+      <div class="tbl"><table><thead><tr><th>Teil</th><th>Für Schadensmacher</th><th>Für Support</th></tr></thead><tbody>
+        <tr><td>Blume</td><td colspan="2" class="note">immer HP – nur Nebenwerte zählen</td></tr>
+        <tr><td>Feder</td><td colspan="2" class="note">immer ATK – nur Nebenwerte zählen</td></tr>
+        <tr><td>Sanduhr</td><td>ATK % (oder HP %/DEF %, wenn die Figur damit skaliert)</td><td>Energy Recharge</td></tr>
+        <tr><td>Kelch</td><td>Element-Schaden des Charakters</td><td>HP % oder Elementarkunde</td></tr>
+        <tr><td>Krone</td><td>CRIT Rate oder CRIT DMG</td><td>Heilbonus (Heiler), HP %</td></tr>
+      </tbody></table></div>
+      <p class="note">Bei Reaktions-Charakteren (z. B. Swirl, Hyperbloom, Lunar-Reaktionen) gilt oft: Elementarkunde auf Sanduhr, Kelch und Krone.</p>
+    </div>
+  </div>
+  <div class="box"><h3>Alle Artefakt-Sets</h3>
+    <div class="filters"><input type="search" id="afq" placeholder="Set suchen …" value="${esc(ui.afSet)}" aria-label="Set suchen"></div>
+    <div class="tbl"><table><thead><tr><th>Set</th><th>2 Teile</th><th>4 Teile</th></tr></thead><tbody>
+      ${sets.map(s => `<tr><td>${setChip(String(s.id), s.n)}<br><span class="stars">${stars(s.r)}</span> <a href="${esc(s.url)}" target="_blank" rel="noopener" class="note" style="color:var(--gold)">Bild ↗</a></td><td class="note" style="min-width:180px">${esc(s.p2)}</td><td class="note" style="min-width:260px">${esc(s.p4)}</td></tr>`).join("")}
+    </tbody></table></div>
+  </div>`;
+}
+
+function evalArtifact() {
+  const out = document.getElementById("evOut"); if (!out) return;
+  const lvl = Math.max(0, Math.min(20, +document.getElementById("evLvl").value || 0));
+  const cr = +document.getElementById("evCr").value || 0, cd = +document.getElementById("evCd").value || 0;
+  const use = +document.getElementById("evUse").value;
+  const slot = document.getElementById("evSlot").value;
+  const cv = 2 * cr + cd;
+  const rolls = Math.floor(lvl / 4);
+  /* Ein CRIT-Roll bringt im Schnitt ca. 6,6 CV. Erwartung für ein gutes Teil auf dem aktuellen Level: */
+  const good = 6 + rolls * 5;
+  let v, col, why;
+  if (cv >= good + 6 || (cv >= good && use >= 1)) { v = "Behalten und weiter leveln"; col = "var(--ok)"; why = `CV ${cv.toFixed(1).replace(".", ",")} ist für +${lvl} stark.`; }
+  else if (cv >= good - 4 || use >= 2) { v = "Bis +8 testen, dann neu bewerten"; col = "var(--gold)"; why = `CV ${cv.toFixed(1).replace(".", ",")} ist durchschnittlich.`; }
+  else { v = "Als Futter verwenden"; col = "var(--warn)"; why = `CV ${cv.toFixed(1).replace(".", ",")} ist für +${lvl} zu wenig.`; }
+  if ((slot === "Sanduhr" || slot === "Kelch" || slot === "Krone") && lvl === 0) why += " Prüfe zuerst, ob der Hauptwert passt.";
+  out.innerHTML = `<div class="row" style="gap:12px"><div class="grade" style="color:${col};font-size:20px;width:auto;padding:0 12px">${v}</div></div><p class="note">${why} Support-Charaktere brauchen oft kein CRIT – dort zählen Energy Recharge, HP % oder Elementarkunde.</p>`;
+}
+
+/* ---------- Material & Farmen ---------- */
+function vMaterial() {
+  const day = serverDay();
+  const own = ownedChars().sort((a, b) => a.n.localeCompare(b.n));
+  if (!ui.plan.char && own.length) ui.plan.char = own[0].k;
+  if (!ui.plan.char) ui.plan.char = DATA.chars[0].k;
+  const c = CH[ui.plan.char]; const a = acct.chars.map[c.k] || {};
+  const curLv = a.lv || 1, curT = a.t || [1, 1, 1];
+  const curP = a.asc != null ? a.asc : phaseFor(curLv);
+  const tgtP = Math.max(curP, phaseFor(ui.plan.lv));
+  const need = {};
+  const add = (id, n) => { need[id] = (need[id] || 0) + n; };
+  for (let p = curP + 1; p <= Math.min(6, tgtP); p++) (c.asc[p] || []).forEach(([id, n]) => add(id, n));
+  for (let i = 0; i < 3; i++) for (let l = curT[i] + 1; l <= ui.plan.t[i]; l++) (c.tal[l] || []).forEach(([id, n]) => add(id, n));
+  const rows = Object.entries(need).map(([id, n]) => ({ id, n, m: DATA.mats[id] || { n: "Material " + id, r: 1, ty: "", src: [] }, h: acct.inv.mats[id] || 0 }))
+    .sort((x, y) => (x.id === "202") - (y.id === "202") || x.m.ty.localeCompare(y.m.ty) || x.m.r - y.m.r);
+  const missing = rows.filter(r => r.h < r.n).length;
+  const schedule = {}; Object.entries(DATA.mats).forEach(([id, m]) => { if (m.r === 2 && m.days && m.days.length === 3 && /Talent/i.test(m.ty)) { const key = m.days.filter(d => d).join(); (schedule[key] = schedule[key] || []).push(+id); } });
+  const groups = [["1,4", "Montag & Donnerstag"], ["2,5", "Dienstag & Freitag"], ["3,6", "Mittwoch & Samstag"]];
+  return `
+  <div><h1>Material & Farmen</h1><p class="lead">Charakter und Ziel wählen, dann siehst du, was fehlt.</p></div>
+  ${farmBox()}
+  <div class="box"><h3>Material-Planer für einen Charakter</h3>
+    <div class="fields">
+      <label class="field" style="grid-column:span 2">Charakter<select id="plChar">${(own.length ? own : DATA.chars).map(x => `<option value="${x.k}" ${x.k === c.k ? "selected" : ""}>${esc(x.n)}</option>`).join("")}${own.length ? `<optgroup label="Noch nicht in deinem Besitz">${DATA.chars.filter(x => !owned(x.k)).map(x => `<option value="${x.k}" ${x.k === c.k ? "selected" : ""}>${esc(x.n)}</option>`).join("")}</optgroup>` : ""}</select></label>
+      <label class="field">Ziel-Level<select id="plLv">${[40, 50, 60, 70, 80, 90].map(v => `<option ${ui.plan.lv == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      ${["Normal", "Skill (E)", "Burst (Q)"].map((n, i) => `<label class="field">${n}<select data-plt="${i}">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option ${ui.plan.t[i] == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>`).join("")}
+    </div>
+    <p class="note">Jetzt: Level ${curLv} (Aufstieg ${curP}), Talente ${curT.join("/")}. Ziel: Level ${ui.plan.lv}, Talente ${ui.plan.t.join("/")}. EXP-Bücher (Hero's Wit) sind nicht in der Liste.</p>
+    ${rows.length ? `<div class="tbl"><table><thead><tr><th>Material</th><th>Art</th><th>Woher</th><th class="n">Brauchst</th><th class="n">Hast</th><th class="n">Fehlt</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>${esc(r.m.n)}</b> <span class="stars">${stars(r.m.r)}</span></td><td class="note">${esc(r.m.ty)}</td><td class="note">${esc(r.m.dom ? r.m.dom.replace("Domain of Mastery: ", "Domain: ") + " (" + r.m.days.map(d => DAYNAMES[d].slice(0, 2)).join(", ") + ")" : (r.m.src || []).slice(0, 1).join(""))}</td><td class="n">${fmt(r.n)}</td><td class="n"><input class="inv" type="number" min="0" id="inv-${r.id}" data-inv="${r.id}" value="${r.h}" aria-label="${esc(r.m.n)} vorhanden"></td><td class="n ${r.h >= r.n ? "have" : "miss"}">${r.h >= r.n ? "✓" : fmt(r.n - r.h)}</td></tr>`).join("")}
+    </tbody></table></div><p class="note">${missing ? `Dir fehlen noch ${missing} von ${rows.length} Materialien.` : "Du hast alles zusammen!"}</p>` : `<p class="note">Für dieses Ziel brauchst du nichts mehr – der Charakter ist schon so weit.</p>`}
+  </div>
+  <div class="box"><h3>Talentbücher – Wochenplan</h3>
+    <div class="tbl"><table><thead><tr><th>Tage</th><th>Bücher</th><th>Deine Charaktere, die sie brauchen</th></tr></thead><tbody>
+    ${groups.map(([key, label]) => { const ids = schedule[key] || []; const isToday = day === 0 || key.split(",").includes(String(day));
+      return `<tr><td style="white-space:nowrap"><b>${label}</b>${isToday ? ' <span class="pill ok">heute</span>' : ""}</td><td>${ids.map(id => esc(bookSeries(id))).join(", ")}</td><td>${ownedChars().filter(x => ids.includes(x.book)).map(x => esc(x.n)).join(", ") || '<span class="muted">–</span>'}</td></tr>`; }).join("")}
+    <tr><td><b>Sonntag</b>${day === 0 ? ' <span class="pill ok">heute</span>' : ""}</td><td colspan="2" class="note">Alle Bücher verfügbar – ideal für Charaktere, deren Tag du verpasst hast.</td></tr>
+    </tbody></table></div>
+  </div>
+  <div class="box"><h3>Resin richtig ausgeben</h3>
+    <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+      <li><b>Wochenbosse zuerst</b> – die ersten drei pro Woche kosten nur 30 statt 60 Resin. Reset am Montag.</li>
+      <li><b>Normale Bosse</b> (40 Resin) für das Aufstiegsmaterial deines Haupt-Charakters.</li>
+      <li><b>Talent-Domain</b> (20 Resin) passend zum Wochentag.</li>
+      <li><b>Artefakt-Domain</b> erst, wenn Level und Talente deiner Haupt-Charaktere stehen.</li>
+      <li>Resin nie voll werden lassen – 1 Resin kommt alle 8 Minuten dazu.</li>
+    </ol>
+  </div>`;
+}
+
+/* ---------- Teams ---------- */
+function vTeams() {
+  const byName = (a, b) => a.n.localeCompare(b.n);
+  const own = ownedChars().sort(byName); const others = DATA.chars.filter(c => !owned(c.k)).sort(byName);
+  const teamOpts = i => { const o = x => `<option value="${x.k}" ${ui.team[i] === x.k ? "selected" : ""}>${esc(x.n)} (${x.e})</option>`;
+    return own.length ? `<optgroup label="Deine Charaktere">${own.map(o).join("")}</optgroup><optgroup label="Noch nicht in deinem Besitz">${others.map(o).join("")}</optgroup>` : others.map(o).join(""); };
+  const sel = ui.team.map(k => k && CH[k]).filter(Boolean);
+  const els = sel.map(c => c.e);
+  const cnt = {}; els.forEach(e => cnt[e] = (cnt[e] || 0) + 1);
+  const res = Object.entries(cnt).filter(([, n]) => n >= 2).map(([e]) => RESONANCE[e]);
+  if (new Set(els).size === 4 && sel.length === 4) res.push("Schutz-Resonanz (4 verschiedene Elemente): alle Resistenzen +15 %");
+  const uniq = [...new Set(els)];
+  const reacts = REACTIONS.filter(([a, b]) => uniq.includes(a) && uniq.includes(b));
+  const hints = [];
+  if (sel.length === 4) {
+    if (!uniq.includes("Anemo") && !uniq.includes("Geo") && reacts.length === 0) hints.push(["bad", "Keine Elementreaktion möglich – nimm mindestens zwei Elemente, die reagieren."]);
+    if (uniq.length === 1) hints.push(["warn", "Nur ein Element: Resonanz ja, aber keine Reaktionen."]);
+    if (uniq.includes("Anemo") && uniq.length >= 2) hints.push(["ok", "Anemo kann Pyro, Hydro, Electro und Cryo verteilen (Swirl)."]);
+    if (uniq.includes("Hydro") && uniq.includes("Pyro")) hints.push(["ok", "Vaporize ist eine der stärksten Reaktionen – baue den Auslöser mit etwas Elementarkunde."]);
+  }
+  /* Stellar-Reaktionen (Snezhnaya): nur mit bestimmten Charakteren im Team */
+  const ks = sel.map(c => c.k), hasEl = e => uniq.includes(e);
+  const stC = ks.filter(k => ["odette", "sandrone", "mitya"].includes(k)), stS = ks.filter(k => ["odette", "sandrone", "vesna"].includes(k));
+  if (stC.length && hasEl("Electro") && hasEl("Cryo")) hints.push(["ok", `Stellar-Conduct aktiv: ${stC.map(k => CH[k].n).join(" und ")} macht aus Superconduct die stärkere Stellar-Reaktion.`]);
+  else if (ks.includes("mitya") && !hasEl("Cryo")) hints.push(["warn", "Mitya braucht einen Cryo-Charakter im Team – erst Electro + Cryo ergibt Stellar-Conduct."]);
+  if (stS.length && hasEl("Anemo") && hasEl("Cryo")) hints.push(["ok", `Stellar Swirl aktiv mit ${stS.map(k => CH[k].n).join(" und ")}.`]);
+  if (ks.includes("valeriy") && stC.length && hasEl("Cryo")) hints.push(["ok", "Valeriy verstärkt in Stellar-Conduct-Teams den Electro-Schaden des Teams."]);
+  const saved = acct.teams.list || [];
+  return `
+  <div><h1>Teams</h1><p class="lead">Vier Charaktere wählen oder unten eine Team-Idee laden.</p></div>
+  <div class="slots">${[0, 1, 2, 3].map(i => { const c = CH[ui.team[i]]; return `<div class="slot ${c ? "filled" : ""}" style="${c ? `--el:var(${ELVAR[c.e]})` : ""}">
+    <div class="row" style="gap:6px">${c ? sigil(c.e) : ""}<b>${c ? esc(c.n) : "Platz " + (i + 1)}</b>${c && !owned(c.k) ? '<span class="pill warn">fehlt noch</span>' : ""}</div>
+    <select data-team="${i}" aria-label="Platz ${i + 1}"><option value="">– wählen –</option>${teamOpts(i)}</select>
+  </div>`; }).join("")}</div>
+  <div class="row"><button class="btn primary" id="teamSave" ${sel.length ? "" : "disabled"}>Team speichern</button><button class="btn" id="teamClear">Leeren</button></div>
+  ${ui.ideaNote && ui.ideaNote.m.length ? `<div class="box hero"><div class="row" style="justify-content:space-between"><h3>${esc(ui.ideaNote.n)}</h3><span class="pill gold">${esc(ui.ideaNote.typ)}</span></div><p style="margin:0">${esc(ui.ideaNote.why)}</p><p class="rot"><b>Rotation:</b> ${esc(ui.ideaNote.rot)}</p></div>` : ""}
+  <div class="grid2">
+    <div class="box"><h3>Reaktionen in diesem Team</h3>${reacts.length ? `<div class="react">${reacts.map(([a, b, n, typ, d]) => `<div class="r"><span class="duo">${sigil(a, "")}${sigil(b, "")}</span><span><b>${n}</b> <span class="pill">${typ}</span><br><span class="note">${esc(d)}</span></span></div>`).join("")}</div>` : `<p class="note">Wähle Charaktere mit verschiedenen Elementen.</p>`}</div>
+    <div class="box"><h3>Resonanz & Tipps</h3>${res.length ? `<ul class="check">${res.map(r => `<li class="ok"><span>${esc(r)}</span></li>`).join("")}</ul>` : `<p class="note">Zwei Charaktere mit gleichem Element geben eine Resonanz.</p>`}
+      ${hints.length ? `<ul class="check">${hints.map(([l, t]) => `<li class="${l}"><span>${esc(t)}</span></li>`).join("")}</ul>` : ""}
+      <p class="note">Ein gutes Team hat meist: 1 Haupt-Schadensmacher, 1–2 Sub-DPS oder Buffer und 1 Heiler oder Schild.</p></div>
+  </div>
+  ${teamIdeas()}
+  <div class="box"><h3>Gespeicherte Teams</h3>${saved.length ? saved.map((t, i) => `<div class="goal"><span></span><span class="row" style="gap:6px">${t.m.map(k => CH[k] ? `<span class="row" style="gap:4px">${sigil(CH[k].e, "")}${esc(CH[k].n)}</span>` : "").join(" · ")}</span><span class="row"><button class="btn small" data-tload="${i}">Laden</button><button class="btn small danger" data-tdel="${i}">Löschen</button></span></div>`).join("") : `<p class="note">Noch keine Teams gespeichert.</p>`}</div>`;
+}
+
+/* ---------- Wishes ---------- */
+function vWishes() {
+  const p = acct.profile;
+  const primos = p.primos || 0, fates = p.fates || 0, sg = p.starglitter || 0, pity = p.pity || 0, guar = !!p.guar;
+  const wishes = Math.floor(primos / 160) + fates + Math.floor(sg / 5);
+  const worst = guar ? 90 - pity : 180 - pity;
+  const soft = Math.max(0, 74 - pity);
+  const pctSafe = Math.min(100, wishes / Math.max(1, worst) * 100);
+  return `
+  <div><h1>Wish-Planer</h1><p class="lead">Deine Zahlen eintragen. Der Planer rechnet, ob es für deinen Wunsch-Charakter reicht.</p></div>
+  <div class="grid2">
+    <div class="box"><h3>Dein Stand</h3>
+      <div class="fields">
+        <label class="field">Primogems<input type="number" min="0" id="wPrimos" data-prof="primos" value="${primos}"></label>
+        <label class="field">Intertwined Fates<input type="number" min="0" id="wFates" data-prof="fates" value="${fates}"></label>
+        <label class="field">Starglitter<input type="number" min="0" id="wSg" data-prof="starglitter" value="${sg}"></label>
+        <label class="field">Pity (Charakter)<input type="number" min="0" max="89" id="wPity" data-prof="pity" value="${pity}"></label>
+      </div>
+      <label class="row" style="gap:10px;font-weight:700"><input type="checkbox" id="wGuar" ${guar ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--gold)"> Nächster 5★ ist garantiert (letzten 50/50 verloren)</label>
+      <p class="note">Pity findest du im Spiel unter Wish → Verlauf: zähle die Wishes seit deinem letzten 5★.</p>
+    </div>
+    <div class="box"><h3>Ergebnis</h3>
+      <div class="tiles"><div class="tile"><span class="lbl">Wishes</span><span class="big">${wishes}</span></div><div class="tile"><span class="lbl">Bis Soft Pity</span><span class="big">${soft}</span></div><div class="tile"><span class="lbl">Sicher bei</span><span class="big">${worst}</span></div></div>
+      <div class="prog" aria-label="Fortschritt zur Garantie"><i style="width:${pctSafe}%"></i></div>
+      <p>${wishes >= worst ? `<b style="color:var(--ok)">Du bekommst den Banner-Charakter sicher</b>, auch mit Pech.` : `Dir fehlen im schlimmsten Fall noch <b>${worst - wishes} Wishes</b> (${fmt((worst - wishes) * 160)} Primogems). ${wishes >= soft ? "Bis Soft Pity reicht es aber schon – mit etwas Glück klappt es früher." : ""}`}</p>
+      <p class="note">${guar ? "Du bist garantiert: der nächste 5★ ist der Banner-Charakter." : "50/50 mit Capturing Radiance: insgesamt ca. 55 % Chance, dass dein erster 5★ der Banner-Charakter ist."}</p>
+    </div>
+  </div>
+  ${vWishHistory()}
+  <div class="box"><h3>Banner und Sparplan</h3>
+    <div class="tbl"><table><thead><tr><th>Phase</th><th>5★ und Waffen</th><th>4★</th><th>Zeitraum</th><th class="n">Wishes bis Ende*</th></tr></thead><tbody>
+    ${BANNERS.map(b => { const d = Math.max(0, daysUntil(b.end)); const extra = Math.floor(d * 60 / 160); const tot = wishes + extra; const live = daysUntil(b.start) <= 0 && d > 0;
+      const when = `${b.start.slice(8)}.${b.start.slice(5, 7)}. – ${b.end.slice(8)}.${b.end.slice(5, 7)}.`;
+      const status = live ? ' <span class="pill ok">läuft</span>' : d === 0 ? ' <span class="pill">vorbei</span>' : "";
+      return `<tr><td><b>${b.phase}</b>${status}</td><td><b>${esc(bList(b, b.five))}</b><div class="note">Waffen: ${esc(bList(b, b.weap) || "–")}</div></td><td class="note">${esc(b.four ? bList(b, b.four) : "noch nicht angekündigt")}</td><td class="mono note" style="white-space:nowrap">${when}</td><td class="n ${tot >= worst ? "have" : ""}">${tot}</td></tr>`
+        + (b.chron ? `<tr><td><b>Chronik-Wish Natlan</b>${status}</td><td>${esc(bList(b, b.chron.five))}<div class="note">Waffen: ${esc(bList(b, b.chron.weap))}</div></td><td class="note">–</td><td class="mono note" style="white-space:nowrap">${when}</td><td class="n note">eigene Pity</td></tr>` : ""); }).join("")}
+    </tbody></table></div>
+    <p class="note">* Rechnet nur mit 60 Primogems pro Tag aus den Daily Commissions. Events, Abyss und Theater bringen zusätzlich mehr. ✓ C2 = hast du schon, mit Constellation. Stand der Banner: ${BANNER_STAND}. Die 4★ der Phase 2 kündigt HoYoverse erst kurz vorher an.</p>
+  </div>
+  <div class="box"><h3>Regeln, die du kennen solltest</h3><ul class="check">
+    <li class="ok"><span>Pity und Garantie wandern auf das nächste Charakter-Banner mit.</span></li>
+    <li class="ok"><span>Beide Charakter-Banner einer Phase teilen sich Pity und Garantie.</span></li>
+    <li class="warn"><span>Waffen-Banner: Hard Pity bei 80, die Fate Points verfallen am Ende des Banners. Nur ziehen, wenn du genug hast.</span></li>
+    <li class="warn"><span>Primogems nicht für Resin ausgeben – das lohnt sich fast nie.</span></li>
+    <li class="ok"><span>Starglitter: 5 Starglitter = 1 Fate im Shop, außerdem gibt es dort jeden Monat 4★-Charaktere.</span></li>
+  </ul></div>`;
+}
+
+function vWishHistory() {
+  const W = acct.wishes || {}; const B = W.b || {};
+  const order = [["char", "Charakter-Banner"], ["weapon", "Waffen-Banner"], ["std", "Standard-Banner"], ["chron", "Chronik-Banner"]].filter(([k]) => B[k] && B[k].total);
+  if (!order.length) return `<div class="box"><h3>Dein Wish-Verlauf</h3><p class="note">Noch nicht geladen. Öffne im Spiel Wish → Verlauf und sag Claude Bescheid – dann wird dein Verlauf hier eingetragen.</p></div>`;
+  const tot = order.reduce((t, [k]) => t + B[k].total, 0);
+  const fives = order.flatMap(([k]) => (B[k].fives || []).map(f => ({ ...f, b: k })));
+  const avg = arr => arr.length ? (arr.reduce((t, f) => t + f.p, 0) / arr.length) : 0;
+  const cf = (B.char && B.char.fives) || [];
+  const won = cf.filter(f => f.lost === false).length, lost = cf.filter(f => f.lost === true).length;
+  return `<div class="box"><div class="row" style="justify-content:space-between"><h3>Dein Wish-Verlauf</h3><span class="note">Stand ${esc(W.updated || "")}</span></div>
+    <div class="tiles">
+      <div class="tile"><span class="lbl">Wishes gesamt</span><span class="big">${fmt(tot)}</span><span class="note">≈ ${fmt(tot * 160)} Primogems</span></div>
+      <div class="tile"><span class="lbl">5★ gezogen</span><span class="big">${fives.length}</span><span class="note">im Schnitt alle ${avg(fives).toFixed(1).replace(".", ",")} Wishes</span></div>
+      <div class="tile"><span class="lbl">50/50</span><span class="big">${won}<small> gewonnen</small></span><span class="note">${lost} verloren${won + lost ? ` · ${Math.round(won / (won + lost) * 100)} %` : ""}</span></div>
+    </div>
+    <div class="tbl"><table><thead><tr><th>Banner</th><th class="n">Wishes</th><th class="n">Pity jetzt</th><th>Status</th><th class="n">Ø Pity 5★</th></tr></thead><tbody>
+      ${order.map(([k, n]) => { const b = B[k]; return `<tr><td><b>${n}</b></td><td class="n">${fmt(b.total)}</td><td class="n">${b.pity}</td><td>${k === "char" ? (b.guar ? '<span class="pill ok">garantiert</span>' : '<span class="pill">50/50</span>') : k === "weapon" ? `<span class="note">Pity ${b.pity}/80</span>` : ""}</td><td class="n">${avg(b.fives || []).toFixed(1).replace(".", ",")}</td></tr>`; }).join("")}
+    </tbody></table></div>
+    <h3>Deine 5★ (neueste zuerst)</h3>
+    <div class="tbl"><table><thead><tr><th>Name</th><th>Banner</th><th class="n">Pity</th><th>50/50</th><th>Datum</th></tr></thead><tbody>
+      ${fives.sort((a, b) => b.d.localeCompare(a.d)).map(f => `<tr><td><b>${esc(f.n)}</b></td><td class="note">${{ char: "Charakter", weapon: "Waffe", std: "Standard", chron: "Chronik" }[f.b]}</td><td class="n ${f.p >= 80 ? "miss" : f.p <= 50 ? "have" : ""}">${f.p}</td><td>${f.lost === true ? '<span class="pill bad">verloren</span>' : f.lost === false ? '<span class="pill ok">gewonnen</span>' : ""}</td><td class="mono note">${esc(f.d.slice(8, 10) + "." + f.d.slice(5, 7) + "." + f.d.slice(0, 4))}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
+}
+
+/* ---------- Ziele ---------- */
+function vGoals() {
+  const goals = acct.goals.list || [];
+  const done = goals.filter(g => g.done).length;
+  return `
+  <div><h1>Ziele</h1><p class="lead">Ziele aufschreiben und abhaken.</p></div>
+  <div class="box">
+    <div class="row" style="justify-content:space-between"><h3>Fortschritt</h3><span class="mono note">${done} / ${goals.length}</span></div>
+    <div class="prog"><i style="width:${goals.length ? done / goals.length * 100 : 0}%"></i></div>
+    <form id="goalForm" class="row" style="margin-top:6px">
+      <input id="goalText" type="text" placeholder="z. B. Furina auf Level 90" style="flex:1 1 240px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px" aria-label="Neues Ziel">
+      <button class="btn primary" type="submit">Ziel hinzufügen</button>
+    </form>
+    <div>${goals.length ? goals.map((g, i) => `<div class="goal ${g.done ? "done" : ""}"><input type="checkbox" id="g${i}" data-gdone="${i}" ${g.done ? "checked" : ""} aria-label="Erledigt"><label class="t" for="g${i}">${g.char && CH[g.char] ? `<span class="row" style="gap:6px;display:inline-flex;vertical-align:middle">${sigil(CH[g.char].e, "")}</span> ` : ""}${esc(g.text)}</label><button class="btn small danger" data-gdel="${i}">Löschen</button></div>`).join("") : `<p class="note">Noch keine Ziele. Ideen: „Spiral Abyss Etage 12 schaffen“, „Ein Team auf Level 90“, „Für Mitya 180 Wishes sparen“.</p>`}</div>
+  </div>`;
+}
+
+/* ---------- Daten laden ---------- */
+function vImport() {
+  const p = acct.profile;
+  return `
+  <div><h1>Daten laden</h1><p class="lead">So kommen deine Daten aus Genshin in den Kompass.</p></div>
+  <div class="grid2">
+    <div class="box"><h3>Weg 1: Charakter-Vitrine (empfohlen)</h3>
+      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+        <li>Im Spiel: <b>Pause-Menü → Profil → Bearbeiten</b>. Stell bis zu 12 Charaktere in die Vitrine und schalte <b>„Charakterdetails anzeigen“</b> ein.</li>
+        <li>Öffne im Browser: <span class="mono" style="color:var(--gold)">enka.network/api/uid/</span><span class="mono">DEINE-UID</span></li>
+        <li>Markiere alles (Strg + A), kopiere es (Strg + C) und füge es unten ein.</li>
+      </ol>
+      <textarea id="enkaIn" rows="6" placeholder="Hier den Text von enka.network einfügen …" aria-label="Enka-Daten" style="width:100%;font-family:var(--f-mono);font-size:12px"></textarea>
+      <div class="row"><button class="btn primary" id="enkaGo">Daten übernehmen</button><span class="status" id="enkaStatus">${esc(ui.imp.enka)}</span></div>
+      <p class="note">Die Vitrine zeigt Level, Constellation, Talente, Waffe, Artefakte und die echten Werte. Andere Spieler sehen dasselbe, wenn sie deine UID eingeben.</p>
+    </div>
+    <div class="box"><h3>Weg 2: Selbst eintragen</h3>
+      <div class="fields">
+        <label class="field">Name im Spiel<input id="pfName" data-prof="name" value="${esc(p.name || "")}"></label>
+        <label class="field">UID<input id="pfUid" data-prof="uid" value="${esc(p.uid || "")}" inputmode="numeric"></label>
+        <label class="field">Adventure Rank<input id="pfAr" type="number" min="1" max="60" data-prof="ar" value="${esc(p.ar || "")}"></label>
+        <label class="field">World Level<input id="pfWl" type="number" min="0" max="9" data-prof="wl" value="${esc(p.wl ?? "")}"></label>
+      </div>
+      <p class="note">Danach unter „Charaktere“ jeden Charakter antippen, „habe ich“ anhaken und Level, Talente und Waffe eintragen. Oder schick Claude Screenshots – Claude trägt alles für dich ein.</p>
+    </div>
+  </div>
+  <div class="box"><h3>Schnell aktualisieren</h3>
+    <p class="note">Oben rechts gibt es den Knopf <b>„↻ Aktualisieren“</b>. Er funktioniert in der <b>Claude-Desktop-App</b>: Er öffnet deine HoYoLAB-Seite und deine Vitrine im Browser der App und übernimmt neue Charaktere, Level und Constellations für alle Charaktere – und Waffen, Artefakte und Talente für die bis zu 12 Charaktere in deiner Vitrine. Dafür musst du im Browser der App bei HoYoLAB angemeldet sein. Beim ersten Mal fragt die App, ob die Seite den Browser benutzen darf.</p>
+    <p class="note">Für Waffen und Artefakte <b>aller</b> Charaktere oder den Wish-Verlauf: Schreib Claude im Chat „aktualisieren“.</p>
+  </div>
+  <div class="box"><h3>Weg 3: Ganzes Inventar scannen (alle Charaktere, Waffen und Artefakte)</h3>
+    <p class="note">Die Vitrine zeigt nur 12 Charaktere und keine freien Artefakte. Für alles brauchst du ein Scanner-Programm am PC, das dein Inventar ausliest und als <b>GOOD-Datei</b> (.json) speichert.</p>
+    <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+      <li>Lade einen Scanner herunter, z. B. <b>Inventory Kamera</b> (liest den Bildschirm) oder <b>Irminsul</b> (liest die Spieldaten beim Einloggen). Beide sind kostenlos auf GitHub.</li>
+      <li>Starte den Scan und exportiere im Format <b>GOOD</b>.</li>
+      <li>Wähle die Datei hier aus – oder leg sie in einen Ordner und sag Claude Bescheid.</li>
+    </ol>
+    <div class="row"><input type="file" id="goodFile" accept=".json,application/json" aria-label="GOOD-Datei wählen"><span class="status" id="goodStatus">${esc(ui.imp.good)}</span></div>
+    <p class="note">Scanner sind Programme von Fans, nicht von HoYoverse. Lade sie nur von der offiziellen GitHub-Seite. Gib dort nie dein Passwort ein.</p>
+  </div>
+  <div class="box"><h3>Eigene Bilder auf einmal hinzufügen</h3>
+    <p class="note">Für Charaktere, Waffen und Artefakt-Sets. Wähle viele Bilder gleichzeitig aus (Strg + A im Ordner). Der Dateiname entscheidet, wohin ein Bild gehört: <span class="mono">Furina.png</span>, <span class="mono">Kamisato Ayato.png</span>, <span class="mono">Amos Bogen.png</span> oder englisch <span class="mono">Amos' Bow.webp</span>. Groß- und Kleinschreibung, Leerzeichen und Bindestriche sind egal. Für Artefakt-Sets den Set-Namen verwenden.</p>
+    <div class="row"><label class="btn primary" style="cursor:pointer">Bilder auswählen<input type="file" id="bulkPics" accept="image/*" multiple hidden></label><span class="status" id="bulkStatus">${esc(ui.imp.bulk)}</span></div>
+    <p class="note" style="margin:0">${picStats()} Du kannst Bilder auch einfach auf die Seite ziehen: auf einen Charakter für genau diesen, sonst wird nach Dateiname zugeordnet. Im offenen Detail-Fenster geht auch Strg + V.</p>
+    ${unmatchedBox()}
+    <div id="bulkOut">${ui.imp.bulkOut}</div>
+  </div>
+  <div class="box"><h3>${window.KOMPASS_LOCAL ? "Daten aus der Claude-Seite übernehmen" : "Daten für die PC-Version"}</h3>
+    ${window.KOMPASS_LOCAL ? `<p class="note">Öffne den Teyvat-Kompass in Claude, geh dort auf „Daten laden“ und drück „Daten kopieren“. Dann hier einfügen und übernehmen. Das ersetzt die Daten in dieser PC-Version.</p>
+    <textarea id="xferIn" rows="4" placeholder="Hier die kopierten Daten einfügen …" aria-label="Kopierte Daten" style="width:100%;font-family:var(--f-mono);font-size:12px"></textarea>
+    <div class="row"><button class="btn primary" id="xferImp">Übernehmen</button><button class="btn" id="xferExp">Sicherung kopieren</button></div>`
+    : `<p class="note">Kopiert alle deine Kompass-Daten, damit du sie in die Teyvat-Kompass-PC-Version einfügen kannst. Die Daten gehen nur in deine Zwischenablage.</p>
+    <div class="row"><button class="btn primary" id="xferExp">Daten kopieren</button></div>`}
+    <textarea id="xferOut" rows="3" readonly hidden aria-label="Daten zum Kopieren" style="width:100%;font-family:var(--f-mono);font-size:11px"></textarea>
+  </div>
+  <div class="box"><h3>Status</h3><p class="note">Speicher: ${esc(dbState)}${p.source ? ` · Letzte Quelle: ${esc(p.source)}` : ""}${p.updated ? ` · ${esc(p.updated)}` : ""}</p></div>`;
+}
+function importEnka(txt) {
+  let j; try { j = JSON.parse(txt.trim()); } catch (e) { return "Das ist kein gültiger Text von enka.network. Kopiere bitte die ganze Seite."; }
+  const pi = j.playerInfo; if (!pi) return "Keine Spielerdaten gefunden – stimmt die UID?";
+  const list = j.avatarInfoList || [];
+  const p = acct.profile;
+  p.name = pi.nickname || p.name; p.ar = pi.level; p.wl = pi.worldLevel; p.uid = j.uid || p.uid; p.sig = pi.signature || "";
+  p.abyss = pi.towerFloorIndex ? `${pi.towerFloorIndex}-${pi.towerLevelIndex}` : p.abyss;
+  p.source = "Charakter-Vitrine (Enka)"; p.updated = new Date().toLocaleDateString("de-AT");
+  const byId = {}; DATA.chars.forEach(c => byId[c.id] = c);
+  let n = 0; const unknown = [];
+  list.forEach(av => {
+    const c = byId[av.avatarId]; if (!c) { unknown.push(av.avatarId); return; }
+    const a = acct.chars.map[c.k] || (acct.chars.map[c.k] = {});
+    a.own = true; n++;
+    a.lv = +((av.propMap || {})["4001"] || {}).val || a.lv;
+    a.asc = +((av.propMap || {})["1002"] || {}).val || 0;
+    a.c = (av.talentIdList || []).length;
+    /* Reisende haben je Element eine eigene Talent-Reihenfolge – die passende zuerst nehmen */
+    const order = DATA.skillOrder[av.avatarId + "-" + av.skillDepotId] || DATA.skillOrder[String(av.avatarId)] || Object.keys(av.skillLevelMap || {}).map(Number).sort((x, y) => x - y);
+    a.t = order.slice(0, 3).map(id => (av.skillLevelMap || {})[id] || 1);
+    const fp = av.fightPropMap || {};
+    const dmgKey = { Pyro: 40, Electro: 41, Hydro: 42, Dendro: 43, Anemo: 44, Geo: 45, Cryo: 46 }[c.e];
+    a.st = { hp: fp[2000] || 0, atk: fp[2001] || 0, def: fp[2002] || 0, em: fp[28] || 0, cr: fp[20] || 0, cd: fp[22] || 0, er: fp[23] || 0, dmg: fp[dmgKey] || 0, phys: fp[30] || 0, heal: fp[26] || 0 };
+    a.arts = [];
+    (av.equipList || []).forEach(eq => {
+      const f = eq.flat || {};
+      if (eq.weapon) {
+        const w = DATA.weapons.find(x => x.id === eq.itemId);
+        if (w) { a.w = w.k; a.wlv = eq.weapon.level || 1; a.wr = (Object.values(eq.weapon.affixMap || {})[0] || 0) + 1; const wm = acct.weapons.map[w.k] || (acct.weapons.map[w.k] = {}); wm.own = true; wm.r = Math.max(wm.r || 0, a.wr); }
+      } else if (eq.reliquary) {
+        const setId = ((f.icon || "").match(/RelicIcon_(\d+)_/) || [])[1];
+        a.arts.push({ slot: SLOTS[f.equipType] || "?", set: setId ? String(setId) : "?", r: f.rankLevel || 5, lvl: Math.max(0, (eq.reliquary.level || 1) - 1),
+          main: PROP[(f.reliquaryMainstat || {}).mainPropId] || "?", mainv: (f.reliquaryMainstat || {}).statValue || 0,
+          subs: (f.reliquarySubstats || []).map(s => [PROP[s.appendPropId] || s.appendPropId, s.statValue]) });
+      }
+    });
+  });
+  ["profile", "chars", "weapons"].forEach(save);
+  render();
+  const unk = unknown.length ? ` ${unknown.length} Charakter${unknown.length > 1 ? "e sind" : " ist"} noch nicht in den Spieldaten (Version ${DATA.v}) – bitte Claude, die Spieldaten zu aktualisieren.` : "";
+  return list.length ? `${n} Charaktere aus deiner Vitrine übernommen.${unk}` : "Profil übernommen. In deiner Vitrine sind keine Charakterdetails sichtbar – schalte „Charakterdetails anzeigen“ ein.";
+}
+
+/* ---------- Import aus einem Inventar-Scanner (GOOD-Format) ---------- */
+function importGOOD(j) {
+  if (!j || j.format !== "GOOD") return "Das ist keine GOOD-Datei. Exportiere im Scanner das Format „GOOD“.";
+  const cByKey = {}; DATA.chars.forEach(c => cByKey[goodKey(c.en)] = c);
+  const wByKey = {}; DATA.weapons.forEach(w => wByKey[goodKey(w.en)] = w);
+  const sByKey = {}; DATA.artifacts.forEach(s => sByKey[goodKey(s.en)] = String(s.id));
+  const mByKey = {}; Object.entries(DATA.mats).forEach(([id, m]) => mByKey[goodKey(m.en)] = id);
+  const charOf = key => { if (!key) return ""; if (/^Traveler/.test(key)) return "aether"; const c = cByKey[key]; return c ? c.k : ""; };
+  let nc = 0, nw = 0, na = 0; const unknown = new Set();
+  (j.characters || []).forEach(gc => {
+    const k = charOf(gc.key); if (!k) { unknown.add(gc.key); return; }
+    const a = acct.chars.map[k] || (acct.chars.map[k] = {});
+    a.own = true; a.lv = gc.level || a.lv || 1; a.asc = gc.ascension ?? a.asc; a.c = gc.constellation ?? a.c ?? 0;
+    if (gc.talent) a.t = [gc.talent.auto || 1, gc.talent.skill || 1, gc.talent.burst || 1];
+    a.arts = []; nc++;
+  });
+  (j.weapons || []).forEach(gw => {
+    const w = wByKey[gw.key]; if (!w) { unknown.add(gw.key); return; }
+    const m = acct.weapons.map[w.k] || (acct.weapons.map[w.k] = {});
+    m.own = true; m.r = Math.max(m.r || 0, gw.refinement || 1); m.n = (m.n || 0); nw++;
+    const k = charOf(gw.location);
+    if (k && acct.chars.map[k]) { const a = acct.chars.map[k]; a.w = w.k; a.wlv = gw.level || 1; a.wr = gw.refinement || 1; }
+  });
+  const bySlot = [[], [], [], [], []];
+  (j.artifacts || []).forEach(ga => {
+    if ((ga.rarity || 0) < 4) return;
+    const set = sByKey[ga.setKey]; if (!set) { unknown.add(ga.setKey); return; }
+    const slot = GOODSLOT[ga.slotKey]; if (!slot) return;
+    const x = { set, slot, r: ga.rarity, lvl: ga.level || 0, main: GOODSTAT[ga.mainStatKey] || ga.mainStatKey,
+      subs: (ga.substats || []).filter(s => s.key && s.value).map(s => [GOODSTAT[s.key] || s.key, Math.round(s.value * 10) / 10]),
+      loc: charOf(ga.location), lk: ga.lock ? 1 : 0 };
+    bySlot[SLOT_ORDER.indexOf(slot)].push(x); na++;
+    if (x.loc && acct.chars.map[x.loc]) (acct.chars.map[x.loc].arts = acct.chars.map[x.loc].arts || []).push({ set, slot, r: x.r, lvl: x.lvl, main: x.main, subs: x.subs });
+  });
+  bySlot.forEach((l, i) => acct["art" + i] = { list: l });
+  if (j.materials) Object.entries(j.materials).forEach(([k, n]) => { const id = mByKey[k]; if (id) acct.inv.mats[id] = n; });
+  acct.profile.source = "Inventar-Scan (" + (j.source || "GOOD") + ")"; acct.profile.updated = new Date().toLocaleDateString("de-AT");
+  rebuildArts();
+  ["chars", "weapons", "inv", "profile", "art0", "art1", "art2", "art3", "art4"].forEach(save);
+  render();
+  return `Übernommen: ${nc} Charaktere, ${nw} Waffen, ${na} Artefakte.${unknown.size ? ` Unbekannt (wird ignoriert): ${[...unknown].slice(0, 5).join(", ")}${unknown.size > 5 ? " …" : ""}` : ""}`;
+}
+
+/* ---------- Aktualisieren über den Browser der Claude-App ---------- */
+const BR = "host:claude_browser";
+let updating = false;
+function setUpd(msg, kind) {
+  const el = document.getElementById("updStatus"); if (el) { el.textContent = msg; el.dataset.kind = kind || ""; }
+  const b = document.getElementById("updBtn"); if (b) b.disabled = updating;
+}
+function pageJson(res) {
+  const txt = typeof res.payload === "string" ? res.payload : (res.content || []).filter(c => c.type === "text").map(c => c.text).join("\n");
+  const i = txt.indexOf("{"), j = txt.lastIndexOf("}");
+  if (i < 0 || j < i) throw { code: "parse" };
+  return JSON.parse(txt.slice(i, j + 1).replace(/\n\n\[truncated[^\]]*\]$/, ""));
+}
+function tabOf(res) {
+  const txt = typeof res.payload === "string" ? res.payload : JSON.stringify(res.payload || res.content || "");
+  const m = txt.match(/tabId[^A-Za-z0-9_-]*([A-Za-z0-9_-]+)/); return m ? m[1] : undefined;
+}
+function updErr(e, step) {
+  const code = e && e.code;
+  if (code === "server_not_connected" || code === "not_granted" || code === "capability_disabled") return "Das Aktualisieren geht nur, wenn du die Seite in der Claude-Desktop-App öffnest. Sonst schreib Claude im Chat „aktualisieren“.";
+  if (code === "cancelled" || code === "approval_required" || code === "not_in_manifest" || code === "consent_required") return "Abgebrochen – der Zugriff auf den Browser wurde nicht erlaubt.";
+  if (code === "parse") return `${step}: Die Antwort war nicht lesbar. Versuch es gleich noch einmal.`;
+  return `${step}: Hat nicht geklappt (${code || "Fehler"}). Versuch es gleich noch einmal.`;
+}
+async function updateNow() {
+  if (updating) return;
+  const uid = String(acct.profile.uid || "").trim();
+  if (!/^\d{9,10}$/.test(uid)) { setUpd("Trag zuerst unter „Daten laden“ deine UID ein.", "bad"); return; }
+  let mcp = null; try { mcp = await window.claude.use("mcp"); } catch (e) {}
+  if (!mcp) { setUpd(updErr({ code: "server_not_connected" }), "bad"); return; }
+  updating = true; setUpd("1/2 Hole deine Charakterliste von HoYoLAB …");
+  const server = { "6": "os_usa", "7": "os_euro", "8": "os_asia", "9": "os_cht" }[uid[0]] || "os_euro";
+  let tab, report = [];
+  try {
+    const r1 = await mcp.callTool(BR, "preview_start", { url: `https://bbs-api-os.hoyolab.com/game_record/genshin/api/index?server=${server}&role_id=${uid}` }, { cache: false });
+    tab = tabOf(r1);
+    const t1 = await mcp.callTool(BR, "get_page_text", tab ? { tabId: tab, max_chars: 600000 } : { max_chars: 600000 }, { cache: false });
+    const j = pageJson(t1);
+    if (j.retcode !== 0) {
+      report.push(j.retcode === 10001 || j.retcode === -100 ? "HoYoLAB: nicht angemeldet. Öffne im Browser der Claude-App hoyolab.com und melde dich an." : `HoYoLAB meldet: ${j.message}`);
+    } else {
+      const byId = {}; DATA.chars.forEach(c => byId[c.id] = c);
+      let added = [], changed = 0, unknown = 0;
+      (j.data.avatars || []).forEach(av => {
+        const c = byId[av.id]; if (!c) { unknown++; return; }
+        const a = acct.chars.map[c.k];
+        if (!a || !a.own) { acct.chars.map[c.k] = Object.assign(a || {}, { own: true, lv: av.level, asc: phaseFor(av.level), c: av.actived_constellation_num || 0, t: (a && a.t) || [1, 1, 1] }); added.push(c.n); return; }
+        if (a.lv !== av.level || (a.c || 0) !== (av.actived_constellation_num || 0)) { a.lv = av.level; a.asc = phaseFor(av.level); a.c = av.actived_constellation_num || 0; changed++; }
+      });
+      if (j.data.role) { acct.profile.ar = j.data.role.level || acct.profile.ar; acct.profile.name = j.data.role.nickname || acct.profile.name; }
+      report.push(`${(j.data.avatars || []).length} Charaktere geprüft${added.length ? `, neu: ${added.join(", ")}` : ""}${changed ? `, ${changed} mit neuem Level oder neuer Constellation` : ""}.${unknown ? ` ${unknown} davon kennt die Seite noch nicht (Spieldaten ${DATA.v}) – bitte Claude, die Spieldaten zu aktualisieren.` : ""}`);
+      save("chars");
+    }
+  } catch (e) { report.push(updErr(e, "HoYoLAB")); }
+  setUpd("2/2 Hole Details deiner Vitrine (Waffen, Artefakte, Talente) …");
+  try {
+    const url = `https://enka.network/api/uid/${uid}`;
+    const r2 = tab ? await mcp.callTool(BR, "navigate", { tabId: tab, url }, { cache: false }) : await mcp.callTool(BR, "preview_start", { url }, { cache: false });
+    if (!tab) tab = tabOf(r2);
+    const t2 = await mcp.callTool(BR, "get_page_text", tab ? { tabId: tab, max_chars: 600000 } : { max_chars: 600000 }, { cache: false });
+    const raw = typeof t2.payload === "string" ? t2.payload : (t2.content || []).filter(c => c.type === "text").map(c => c.text).join("\n");
+    const i = raw.indexOf("{"), k = raw.lastIndexOf("}");
+    const msg = importEnka(raw.slice(i, k + 1));
+    report.push("Vitrine: " + msg);
+  } catch (e) { report.push(updErr(e, "Vitrine")); }
+  acct.profile.updated = new Date().toLocaleDateString("de-AT"); save("profile");
+  updating = false; setUpd(report.join(" "), "ok"); render();
+}
+
+/* ---------- Ereignisse ---------- */
+const layer = document.getElementById("layer");
+function openChar(k) { layer.innerHTML = `<div class="scrim" data-scrim>${charDrawer(k)}</div>`; delete layer.dataset.weapon; layer.dataset.char = k; const b = layer.querySelector("[data-close]"); if (b) b.focus(); }
+function closeLayer() { layer.innerHTML = ""; delete layer.dataset.char; delete layer.dataset.weapon; }
+document.addEventListener("keydown", e => { if (e.key === "Escape" && layer.innerHTML) closeLayer(); });
+layer.addEventListener("click", e => {
+  if (e.target.matches("[data-scrim]") || e.target.closest("[data-close]")) return closeLayer();
+  /* Der Container #layer trägt selbst data-char/data-weapon (merkt sich, was offen ist) – den nicht als Link werten */
+  const lw = e.target.closest("[data-weapon]"); if (lw && lw !== layer) return openWeapon(lw.dataset.weapon);
+  const lc = e.target.closest("[data-char]"); if (lc && lc !== layer) { ui.editOpen = false; return openChar(lc.dataset.char); }
+  const ti = e.target.closest("[data-tidea]"); if (ti) return loadIdea(+ti.dataset.tidea);
+  const pd = e.target.closest("[data-picdel]"); if (pd) { delete PICS()[pd.dataset.picdel]; save("pics"); refreshLayer(); render(); return; }
+  const pl = e.target.closest("[data-plan]"); if (pl) { ui.plan.char = pl.dataset.plan; closeLayer(); setTab("material"); return; }
+  const g = e.target.closest("[data-goal]"); if (g) { const c = CH[g.dataset.goal]; acct.goals.list = acct.goals.list || []; acct.goals.list.push({ text: `${c.n} ausbauen (Level 90, Talente 8/8/8)`, char: c.k, done: false }); save("goals"); toast("Ziel gemerkt"); return; }
+});
+layer.addEventListener("change", e => {
+  if (e.target.matches("[data-pic]") && e.target.files && e.target.files[0]) return uploadPic(e.target.dataset.pic, e.target.files[0]);
+  if (e.target.matches("[data-wown-k]")) { const wk = e.target.dataset.wownK; const m = acct.weapons.map[wk] || (acct.weapons.map[wk] = {}); m.own = e.target.checked; save("weapons"); openWeapon(wk); render(); return; }
+  const k = layer.dataset.char; if (!k) return;
+  const a = acct.chars.map[k] || (acct.chars.map[k] = {});
+  if (e.target.matches("[data-own]")) { a.own = e.target.checked; if (a.own && !a.lv) { a.lv = 1; a.t = [1, 1, 1]; a.c = 0; } }
+  else if (e.target.matches("[data-cf]")) { const f = e.target.dataset.cf; a[f] = f === "w" ? e.target.value : +e.target.value; if (f === "lv") a.asc = phaseFor(a.lv); if (f === "w" && a.w) { const wm = acct.weapons.map[a.w] || (acct.weapons.map[a.w] = {}); wm.own = true; } }
+  else if (e.target.matches("[data-ct]")) { a.t = (a.t || [1, 1, 1]).slice(); a.t[+e.target.dataset.ct] = +e.target.value; }
+  else return;
+  save("chars"); if (e.target.matches("[data-cf='w']")) save("weapons");
+  ui.editOpen = true; openChar(k); render();
+});
+const main = document.getElementById("main");
+main.addEventListener("click", e => {
+  const t = e.target;
+  const ch = t.closest("[data-char]"); if (ch) { ui.editOpen = false; return openChar(ch.dataset.char); }
+  const wp = t.closest("[data-weapon]"); if (wp) return openWeapon(wp.dataset.weapon);
+  const co = t.closest("[data-cown]"); if (co) { ui.cf.own = co.dataset.cown; return render(); }
+  const bo = t.closest("[data-boss]"); if (bo) { dailyState(); acct.weekly.boss = Math.max(0, Math.min(9, (acct.weekly.boss || 0) + +bo.dataset.boss)); save("weekly"); return render(); }
+  const cv = t.closest("[data-cview]"); if (cv) { ui.cview = cv.dataset.cview; try { localStorage.setItem("tk-cview", ui.cview); } catch (err) {} return render(); }
+  const wv = t.closest("[data-wview]"); if (wv) { ui.wview = wv.dataset.wview; try { localStorage.setItem("tk-wview", ui.wview); } catch (err) {} return render(); }
+  const cro = t.closest("[data-crole]"); if (cro) { ui.cf.role = ui.cf.role === cro.dataset.crole ? "" : cro.dataset.crole; return render(); }
+  const cst = t.closest("[data-cst]"); if (cst) { ui.cf.st = ui.cf.st === cst.dataset.cst ? "" : cst.dataset.cst; if (ui.cf.st) ui.cf.own = "habe"; return render(); }
+  if (t.closest("#cfReset")) { ui.cf = { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: ui.cf.sort, role: "", st: "" }; return render(); }
+  const tid = t.closest("[data-tidea]"); if (tid) return loadIdea(+tid.dataset.tidea);
+  const tim = t.closest("[data-timode]"); if (tim) { ui.ti.mode = tim.dataset.timode; return render(); }
+  if (t.closest("#farmAddBtn")) { const k = document.getElementById("farmAdd").value; if (!k) return toast("Erst einen Charakter wählen"); acct.farm.list = acct.farm.list || []; acct.farm.list.push(farmDefault(k)); save("farm"); return render(); }
+  if (t.closest("#farmClear")) { acct.farm.list = []; save("farm"); return render(); }
+  const fd = t.closest("[data-farmdel]"); if (fd) { acct.farm.list.splice(+fd.dataset.farmdel, 1); save("farm"); return render(); }
+  const ud = t.closest("[data-unmdel]"); if (ud) { ui.unm.splice(+ud.dataset.unmdel, 1); return render(); }
+  const ce = t.closest("[data-cel]"); if (ce) { ui.cf.el = ui.cf.el === ce.dataset.cel ? "" : ce.dataset.cel; return render(); }
+  const wo = t.closest("[data-wown]"); if (wo) { ui.wf.own = wo.dataset.wown; return render(); }
+  const af = t.closest("[data-af]"); if (af) { ui.af = af.dataset.af; return render(); }
+  const op = t.closest("[data-optfor]"); if (op) { ui.opt.char = op.dataset.optfor; ui.opt.goblet = ""; ui.opt._for = ""; ui.af = "opt"; closeLayer(); return setTab("artefakte"); }
+  if (t.closest("#teamSave")) { const m = ui.team.filter(Boolean); if (!m.length) return; acct.teams.list = acct.teams.list || []; acct.teams.list.push({ m }); save("teams"); toast("Team gespeichert"); return render(); }
+  if (t.closest("#teamClear")) { ui.team = ["", "", "", ""]; ui.ideaNote = null; return render(); }
+  const tl = t.closest("[data-tload]"); if (tl) { const m = acct.teams.list[+tl.dataset.tload].m; ui.team = [0, 1, 2, 3].map(i => m[i] || ""); return render(); }
+  const td = t.closest("[data-tdel]"); if (td) { acct.teams.list.splice(+td.dataset.tdel, 1); save("teams"); return render(); }
+  const gd = t.closest("[data-gdel]"); if (gd) { acct.goals.list.splice(+gd.dataset.gdel, 1); save("goals"); return render(); }
+  if (t.closest("#enkaGo")) { const msg = importEnka(document.getElementById("enkaIn").value); ui.imp.enka = msg; toast(msg.split(".")[0]); render(); return; }
+});
+let profT;
+main.addEventListener("input", e => {
+  const t = e.target;
+  if (t.id === "cq") { ui.cf.q = t.value; return render(); }
+  if (t.id === "tiq") { ui.ti.q = t.value; return render(); }
+  if (t.id === "wq") { ui.wf.q = t.value; return render(); }
+  if (t.id === "afq") { ui.afSet = t.value; return render(); }
+  if (t.id === "aq") { ui.aff.q = t.value; return render(); }
+  if (t.closest("#evOut") || ["evLvl", "evCr", "evCd"].includes(t.id)) return evalArtifact();
+  if (t.dataset.prof) { const v = t.type === "number" ? (t.value === "" ? 0 : +t.value) : t.value.trim(); acct.profile[t.dataset.prof] = v; clearTimeout(profT); profT = setTimeout(() => { save("profile"); if (ui.tab === "wishes") render(); renderTabs(); }, 600); return; }
+  if (t.dataset.inv) { acct.inv.mats[t.dataset.inv] = Math.max(0, +t.value || 0); clearTimeout(profT); profT = setTimeout(() => { save("inv"); render(); }, 700); return; }
+});
+main.addEventListener("change", e => {
+  if (e.target.matches("[data-daily]")) { dailyState(); const id = e.target.dataset.daily, d = acct.daily.done; if (e.target.checked) { if (!d.includes(id)) d.push(id); } else acct.daily.done = d.filter(x => x !== id); save("daily"); return render(); }
+  const t = e.target;
+  const map = { cw: v => ui.cf.w = v, cr: v => ui.cf.r = v, creg: v => ui.cf.reg = v, csort: v => ui.cf.sort = v, ww: v => ui.wf.w = v, wr: v => ui.wf.r = v,
+    plChar: v => { ui.plan.char = v; }, plLv: v => ui.plan.lv = +v,
+    aslot: v => ui.aff.slot = v, aset: v => ui.aff.set = v, awhere: v => ui.aff.where = v, asort: v => ui.aff.sort = v,
+    oChar: v => { ui.opt.char = v; ui.opt.goblet = ""; ui.opt._for = ""; }, oSands: v => ui.opt.sands = v, oGoblet: v => ui.opt.goblet = v, oCirclet: v => ui.opt.circlet = v, oSet: v => ui.opt.set = v,
+    oPreset: v => { ui.opt.preset = v; ui.opt.sands = { hp: "HP%", def: "DEF%", em: "Elementarkunde", er: "Energy Recharge", heal: "HP%" }[v] || "ATK%"; if (v === "heal") ui.opt.circlet = "Heilbonus"; if (v === "em") { ui.opt.goblet = "Elementarkunde"; ui.opt.circlet = "Elementarkunde"; } } };
+  if (t.id === "oFree") { ui.opt.free = t.checked; return render(); }
+  if (t.id === "oLv") { ui.opt.lv16 = t.checked; return render(); }
+  if (t.id === "bulkPics" && t.files && t.files.length) { bulkPics([...t.files]); return; }
+  if (t.matches("[data-farmlv]")) { acct.farm.list[+t.dataset.farmlv].lv = +t.value; save("farm"); return render(); }
+  if (t.matches("[data-farmt]")) { const [i, j] = t.dataset.farmt.split(":").map(Number); acct.farm.list[i].t[j] = +t.value; save("farm"); return render(); }
+  if (t.matches("[data-unm]") && t.value) { const u = ui.unm.splice(+t.dataset.unm, 1)[0]; if (u) uploadPic(t.value, u.file); return; }
+  if (t.id === "goodFile" && t.files && t.files[0]) {
+    const fr = new FileReader(); ui.imp.good = "Lese Datei …"; const st = document.getElementById("goodStatus"); if (st) st.textContent = ui.imp.good;
+    fr.onload = () => { let j; try { j = JSON.parse(fr.result); } catch (e) { ui.imp.good = "Die Datei ist kein gültiges JSON."; toast(ui.imp.good); render(); return; }
+      ui.imp.good = importGOOD(j); toast(ui.imp.good.split(".")[0]); render(); };
+    fr.readAsText(t.files[0]); return;
+  }
+  if (map[t.id]) { map[t.id](t.value); return render(); }
+  if (t.dataset.plt) { ui.plan.t[+t.dataset.plt] = +t.value; return render(); }
+  if (t.dataset.team) { ui.team[+t.dataset.team] = t.value; return render(); }
+  if (t.id === "wGuar") { acct.profile.guar = t.checked; save("profile"); return render(); }
+  if (t.id === "evSlot" || t.id === "evUse") return evalArtifact();
+  if (t.dataset.gdone) { acct.goals.list[+t.dataset.gdone].done = t.checked; save("goals"); return render(); }
+});
+main.addEventListener("submit", e => {
+  if (e.target.id !== "goalForm") return; e.preventDefault();
+  const inp = document.getElementById("goalText"); const v = inp.value.trim(); if (!v) return;
+  acct.goals.list = acct.goals.list || []; acct.goals.list.push({ text: v, done: false }); inp.value = ""; save("goals"); render();
+});
+
+/* ---------- Daten übertragen (Claude-Seite <-> PC-Version) ---------- */
+document.addEventListener("click", async e => {
+  if (e.target.id === "xferExp") {
+    const txt = JSON.stringify({ kompass: 1, docs: acct });
+    try { await navigator.clipboard.writeText(txt); toast("Daten kopiert"); }
+    catch (err) { const o = document.getElementById("xferOut"); if (o) { o.hidden = false; o.value = txt; o.focus(); o.select(); } toast("Markiert – jetzt Strg + C drücken"); }
+  }
+  if (e.target.id === "xferImp") {
+    let j = null; try { j = JSON.parse(document.getElementById("xferIn").value); } catch (err) {}
+    if (!j || j.kompass !== 1 || !j.docs) { toast("Das sind keine Kompass-Daten"); return; }
+    for (const name of DOCS) if (j.docs[name]) { acct[name] = j.docs[name]; if (db) await db.doc("acct/" + name).set(acct[name]); }
+    rebuildArts(); toast("Daten übernommen"); render();
+  }
+});
+
+/* ================= Upgrade: Guides, Team-Ideen, Farm-Liste, Schnellsuche ================= */
+let GUIDE = { chars: {}, teams: [] };
+const gOf = k => (GUIDE.chars || {})[k];
+const lvOfK = k => (acct.chars.map[k] || {}).lv || 0;
+const isBuilt = k => owned(k) && lvOfK(k) >= 80;
+const TALN = { N: "Normalangriff", E: "Skill (E)", Q: "Burst (Q)" }, TALI = { N: 0, E: 1, Q: 2 };
+const ROLES = ["Main-DPS", "Sub-DPS", "Support", "Heiler", "Schild"];
+const guideTalents = g => g.tal.split(/[>=]/);
+const critBuild = g => g.ms.c.every(x => x.startsWith("CRIT"));
+function setOptName(o) { return o.s.map(id => setName(String(id))).join(" + ") + (o.s.length > 1 ? " (je 2 Teile)" : ""); }
+function setOptMatch(o, cnt) { return o.s.length === 1 ? (cnt[o.s[0]] || 0) >= 4 : o.s.every(id => (cnt[id] || 0) >= 2); }
+function teamsWith(k) { return GUIDE.teams.map((t, i) => ({ t, i })).filter(x => x.t.m.includes(k) || Object.values(x.t.alt || {}).some(a => a.includes(k))); }
+
+function guideBox(c, a) {
+  const g = gOf(c.k); if (!g) return "";
+  const tl = guideTalents(g), own = !!a.own;
+  const wbtn = k => { const w = WP[k]; return w ? `<button class="chip" data-weapon="${k}">${esc(w.n)}${ownedW(k) ? ' <span style="color:var(--ok)">✓</span>' : ""}</button>` : ""; };
+  const tw = teamsWith(c.k).slice(0, 5);
+  return `<div class="box guide"><div class="row" style="justify-content:space-between"><h3>Guide</h3><span class="row" style="gap:5px">${g.ro.map(r => `<span class="pill gold">${r}</span>`).join("")}</span></div>
+    <p style="margin:0">${esc(g.was)}</p>
+    <div><b>So funktioniert das Kit</b><p class="note" style="margin:2px 0 0">${esc(g.kit)}</p></div>
+    <div><b>Talente leveln</b><div class="row" style="gap:6px;margin-top:4px">${tl.map((t, i) => `<span class="pill" style="font-size:12px">${i + 1}. ${TALN[t]}${own && a.t ? " · " + a.t[TALI[t]] : ""}</span>`).join("")}${tl.includes("N") ? "" : '<span class="note">Normalangriff nicht nötig</span>'}</div></div>
+    <div><b>Artefakt-Sets</b><ol class="gl">${g.sets.map(o => `<li>${esc(setOptName(o))}${o.s.length === 1 ? ' <span class="note">(4 Teile)</span>' : ""}${o.n ? ` <span class="note">– ${esc(o.n)}</span>` : ""}</li>`).join("")}</ol>
+      ${(() => { const S = ART[String(g.sets[0].s[0])]; return S && g.sets[0].s.length === 1 ? `<p class="note" style="margin:4px 0 0"><b style="color:var(--fg)">${esc(S.n)}</b> · 2 Teile: ${esc(S.p2)} · 4 Teile: ${esc(S.p4)}</p>` : ""; })()}</div>
+    <div><b>Hauptwerte</b><dl class="kv" style="margin-top:4px"><dt>Sanduhr</dt><dd>${g.ms.s.map(esc).join(" oder ")}</dd><dt>Kelch</dt><dd>${g.ms.g.map(esc).join(" oder ")}</dd><dt>Krone</dt><dd>${g.ms.c.map(esc).join(" oder ")}</dd></dl></div>
+    <div><b>Nebenwerte (wichtigste zuerst)</b><div class="row" style="gap:6px;margin-top:4px">${g.sub.map((s, i) => `<span class="pill" style="font-size:12px">${i + 1}. ${esc(s)}</span>`).join("")}</div></div>
+    <div><b>Waffen</b>${g.w5.length ? `<div class="row" style="gap:6px;margin-top:4px"><span class="note" style="min-width:52px">5★</span>${g.w5.map(wbtn).join("")}</div>` : ""}
+      ${g.w4.length ? `<div class="row" style="gap:6px;margin-top:6px"><span class="note" style="min-width:52px">4★ / frei</span>${g.w4.map(wbtn).join("")}</div>` : ""}<p class="note" style="margin:4px 0 0">✓ = hast du schon. Reihenfolge: beste zuerst.</p></div>
+    ${tw.length ? `<div><b>Teams mit ${esc(c.n)}</b><div class="row" style="gap:6px;margin-top:4px">${tw.map(x => `<button class="chip" data-tidea="${x.i}">${esc(x.t.n)}</button>`).join("")}</div></div>` : ""}
+    <p class="note" style="margin:0">Stand ${esc(GUIDE.v || "")} · nach ${esc((GUIDE.quellen || []).join(", "))}. Eigene Zusammenfassung, ohne Gewähr.</p></div>`;
+}
+
+/* ---------- Team-Ideen ---------- */
+function teamLineup(t) { return t.m.map(k => { if (owned(k)) return { k, orig: k }; const alt = ((t.alt || {})[k] || []).find(owned); return alt ? { k: alt, orig: k, sub: true } : { k, orig: k, miss: true }; }); }
+function teamIdeas() {
+  const f = ui.ti; const q = f.q.toLowerCase();
+  let rows = GUIDE.teams.map((t, i) => { const l = teamLineup(t); return { t, i, l, have: l.filter(x => !x.miss).length, built: l.filter(x => !x.miss && isBuilt(x.k)).length }; });
+  rows = rows.filter(r => (f.mode === "alle" || r.have === 4) && (!q || (r.t.n + " " + r.t.typ + " " + r.l.map(x => CH[x.k].n).join(" ")).toLowerCase().includes(q)));
+  rows.sort((a, b) => b.have - a.have || b.built - a.built || a.t.n.localeCompare(b.t.n));
+  const can = GUIDE.teams.filter(t => teamLineup(t).every(x => !x.miss)).length;
+  return `<div class="box"><div class="row" style="justify-content:space-between"><h3>Team-Ideen</h3><span class="note">${can} von ${GUIDE.teams.length} kannst du mit deinen Charakteren spielen</span></div>
+    <div class="filters"><input type="search" id="tiq" placeholder="Team, Reaktion oder Charakter …" value="${esc(f.q)}" aria-label="Team-Ideen durchsuchen">
+      <button class="chip" data-timode="kann" aria-pressed="${f.mode === "kann"}">Kann ich spielen</button><button class="chip" data-timode="alle" aria-pressed="${f.mode === "alle"}">Alle</button></div>
+    <div class="ideas">${rows.map(r => `<article class="idea"><div class="row" style="justify-content:space-between"><b style="font-size:16px">${esc(r.t.n)}</b><span class="row" style="gap:5px"><span class="pill gold">${esc(r.t.typ)}</span><span class="pill ${r.have === 4 ? (r.built === 4 ? "ok" : "") : "warn"}">${r.have === 4 ? (r.built === 4 ? "alle gebaut" : r.built + " von 4 gebaut") : (4 - r.have) + " fehlt"}</span></span></div>
+      <div class="minis">${r.l.map(x => rosterCell(CH[x.k], true, x.miss ? "fehlt" : x.sub ? "Ersatz" : isBuilt(x.k) ? "Lv " + lvOfK(x.k) : "Lv " + lvOfK(x.k) + " ↑")).join("")}</div>
+      ${r.l.some(x => x.sub) ? `<p class="note" style="margin:0">Ersatz: ${r.l.filter(x => x.sub).map(x => `${esc(CH[x.k].n)} statt ${esc(CH[x.orig].n)}`).join(", ")}</p>` : ""}
+      <p style="margin:0">${esc(r.t.why)}</p>
+      <p class="rot"><b>Rotation:</b> ${esc(r.t.rot)}</p>
+      <div class="row"><button class="btn small primary" data-tidea="${r.i}">In den Planer laden</button></div></article>`).join("") || '<p class="note">Kein Team gefunden. Stell auf „Alle“ um.</p>'}</div>
+    <p class="note" style="margin:0">Rotationen sind Faustregeln: erst die Supports, zuletzt der Hauptschaden. E = Skill, Q = Burst.</p></div>`;
+}
+function loadIdea(i) { const t = GUIDE.teams[i]; if (!t) return; ui.team = teamLineup(t).map(x => x.k); ui.ideaNote = t; closeLayer(); setTab("teams"); window.scrollTo(0, 0); }
+/* Wer fehlt nur noch, damit ein Team fertig ist? */
+function nextBuild() {
+  const best = {};
+  GUIDE.teams.forEach(t => { const l = teamLineup(t); if (l.some(x => x.miss)) return; const un = l.filter(x => !isBuilt(x.k)); if (!un.length || un.length > 2) return;
+    un.forEach(x => { const s = (un.length === 1 ? 10 : 4) + CH[x.k].r; if (!best[x.k] || best[x.k].s < s) best[x.k] = { k: x.k, s, t, n: un.length }; }); });
+  return Object.values(best).sort((a, b) => b.s - a.s || lvOfK(b.k) - lvOfK(a.k)).slice(0, 4);
+}
+function nextBuildBox() {
+  const nb = nextBuild(); if (!nb.length) return "";
+  return `<div class="box"><h3>Als Nächstes bauen</h3><span class="note">Diese Charaktere machen ein starkes Team fertig.</span>
+    <div style="display:flex;flex-direction:column;gap:6px">${nb.map(x => `<button class="row linkrow" data-char="${x.k}">${avatar(CH[x.k])}<span style="min-width:0"><b>${esc(CH[x.k].n)}</b> <span class="pill">Lv ${lvOfK(x.k)}</span><br><span class="note">${x.n === 1 ? "Fehlt als Einziger für" : "Einer von zwei für"} „${esc(x.t.n)}“</span></span></button>`).join("")}</div></div>`;
+}
+
+/* ---------- Farm-Liste (mehrere Charaktere) ---------- */
+const XP_AT = { 1: 0, 20: 120175, 40: 698500, 50: 1277600, 60: 2131725, 70: 3327650, 80: 4939525, 90: 8362650 };
+function xpAt(lv) { const ks = Object.keys(XP_AT).map(Number); if (lv >= 90) return XP_AT[90]; let lo = 1, hi = 20; for (let i = 0; i < ks.length - 1; i++) if (lv >= ks[i] && lv <= ks[i + 1]) { lo = ks[i]; hi = ks[i + 1]; } return XP_AT[lo] + (XP_AT[hi] - XP_AT[lo]) * (lv - lo) / (hi - lo); }
+function farmDefault(k) { const a = acct.chars.map[k] || {}, g = gOf(k), cur = a.t || [1, 1, 1]; const t = cur.slice(); (g ? guideTalents(g) : ["E", "Q"]).forEach(x => { t[TALI[x]] = Math.max(t[TALI[x]], 8); }); return { k, lv: 90, t }; }
+function matCat(id, m) {
+  if (id === "202") return "Mora";
+  if (m.ty === "Character Talent Material") return m.days && m.days.length ? "Talentbücher" : "Wochenboss";
+  if (m.ty === "Character Level-Up Material") return "Boss";
+  if (m.ty === "Character Ascension Material") return "Edelsteine";
+  if (/^Local Specialty/.test(m.ty)) return "Spezialität";
+  return "Gegner-Drops";
+}
+function farmCalc() {
+  const need = {}, who = {}; let xp = 0;
+  (acct.farm.list || []).forEach(e => { const c = CH[e.k]; if (!c) return; const a = acct.chars.map[e.k] || {};
+    const curLv = a.lv || 1, curT = a.t || [1, 1, 1], curP = a.asc != null ? a.asc : phaseFor(curLv), tgtP = Math.max(curP, phaseFor(e.lv));
+    const add = (id, n) => { need[id] = (need[id] || 0) + n; (who[id] = who[id] || new Set()).add(c.n); };
+    for (let p = curP + 1; p <= Math.min(6, tgtP); p++) (c.asc[p] || []).forEach(([id, n]) => add(String(id), n));
+    for (let i = 0; i < 3; i++) for (let l = curT[i] + 1; l <= e.t[i]; l++) (c.tal[l] || []).forEach(([id, n]) => add(String(id), n));
+    if (e.lv > curLv) xp += xpAt(Math.min(e.lv, 90)) - xpAt(Math.min(curLv, 90)); });
+  const rows = Object.entries(need).map(([id, n]) => { const m = DATA.mats[id] || { n: "Material " + id, r: 1, ty: "", src: [], days: [] }; const h = acct.inv.mats[id] || 0; return { id, n, h, m, cat: matCat(id, m), miss: Math.max(0, n - h), who: [...who[id]] }; });
+  /* Resin grob schätzen: Talent-Domain ca. 10 „grüne Bücher“ je 20 Resin, Boss ca. 2,5 Materialien je 40 Resin, Wochenboss ca. 2,5 je Kampf */
+  const eq = r => ({ 2: 1, 3: 3, 4: 9 }[r] || 0);
+  const bookEq = rows.filter(r => r.cat === "Talentbücher").reduce((s, r) => s + r.miss * eq(r.m.r), 0);
+  const boss = rows.filter(r => r.cat === "Boss").reduce((s, r) => s + r.miss, 0);
+  const weekly = rows.filter(r => r.cat === "Wochenboss" && r.m.r === 5 && !/Crown|Krone/i.test(r.m.en + r.m.n)).reduce((s, r) => s + r.miss, 0);
+  const resin = Math.ceil(bookEq / 10.1) * 20 + Math.ceil(boss / 2.5) * 40 + Math.ceil(xp / 122500) * 20;
+  return { rows, xp, resin, weeklyRuns: Math.ceil(weekly / 2.5), bookRuns: Math.ceil(bookEq / 10.1), bossRuns: Math.ceil(boss / 2.5) };
+}
+function farmBox() {
+  const list = acct.farm.list || [], day = serverDay();
+  const own = ownedChars().sort((a, b) => a.n.localeCompare(b.n)), inList = new Set(list.map(e => e.k));
+  const F = farmCalc();
+  const cats = ["Talentbücher", "Wochenboss", "Boss", "Edelsteine", "Spezialität", "Gegner-Drops", "Mora"];
+  const today = F.rows.filter(r => r.cat === "Talentbücher" && r.miss && (day === 0 || r.m.days.includes(day)));
+  return `<div class="box hero"><div class="row" style="justify-content:space-between"><h2>Farm-Liste</h2><span class="note">Mehrere Charaktere auf einmal planen</span></div>
+    <div class="filters"><select id="farmAdd" aria-label="Charakter zur Farm-Liste"><option value="">Charakter wählen …</option>${own.filter(c => !inList.has(c.k)).map(c => `<option value="${c.k}">${esc(c.n)} (Lv ${lvOfK(c.k)})</option>`).join("")}<optgroup label="Noch nicht in deinem Besitz">${DATA.chars.filter(c => !owned(c.k) && !inList.has(c.k)).sort((a, b) => a.n.localeCompare(b.n)).map(c => `<option value="${c.k}">${esc(c.n)}</option>`).join("")}</optgroup></select>
+      <button class="btn primary" id="farmAddBtn">Hinzufügen</button>${list.length ? '<button class="btn" id="farmClear">Liste leeren</button>' : ""}</div>
+    ${list.length ? `<div class="tbl"><table><thead><tr><th>Charakter</th><th>Jetzt</th><th>Ziel-Level</th><th>Normal</th><th>Skill</th><th>Burst</th><th></th></tr></thead><tbody>
+      ${list.map((e, i) => { const c = CH[e.k], a = acct.chars.map[e.k] || {}; return `<tr><td><button class="chip" data-char="${e.k}">${esc(c.n)}</button></td><td class="note">Lv ${a.lv || 1} · ${(a.t || [1, 1, 1]).join("/")}</td>
+        <td><select data-farmlv="${i}" aria-label="Ziel-Level ${esc(c.n)}">${[20, 40, 50, 60, 70, 80, 90].map(v => `<option ${e.lv == v ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+        ${[0, 1, 2].map(j => `<td><select data-farmt="${i}:${j}" aria-label="Talent-Ziel">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option ${e.t[j] == v ? "selected" : ""}>${v}</option>`).join("")}</select></td>`).join("")}
+        <td><button class="btn small danger" data-farmdel="${i}" aria-label="${esc(c.n)} entfernen">✕</button></td></tr>`; }).join("")}</tbody></table></div>
+    <div class="row"><span class="pill gold" style="font-size:13px">ca. ${fmt(F.resin)} Resin</span><span class="pill" style="font-size:13px">ca. ${Math.ceil(F.resin / 180)} Tage</span>${F.weeklyRuns ? `<span class="pill" style="font-size:13px">${F.weeklyRuns} Wochenboss-Kämpfe</span>` : ""}${F.xp ? `<span class="pill" style="font-size:13px">${fmt(Math.ceil(F.xp / 20000))} EXP-Bücher (lila)</span>` : ""}</div>
+    ${today.length ? `<p style="margin:0"><b style="color:var(--ok)">Heute farmbar:</b> ${[...new Set(today.map(r => bookSeries(r.id)))].map(esc).join(", ")} (${[...new Set(today.flatMap(r => r.who))].map(esc).join(", ")})</p>` : ""}
+    ${F.rows.length ? cats.map(cat => { const rs = F.rows.filter(r => r.cat === cat).sort((a, b) => a.m.n.localeCompare(b.m.n)); if (!rs.length) return "";
+      return `<details class="fcat" ${rs.some(r => r.miss) ? "open" : ""}><summary><b>${cat}</b> <span class="note">${rs.filter(r => r.miss).length ? rs.filter(r => r.miss).length + " fehlen noch" : "alles da"}</span></summary>
+        <div class="tbl"><table><tbody>${rs.map(r => `<tr><td><b>${esc(r.m.n)}</b> <span class="stars">${stars(r.m.r)}</span><br><span class="note">${esc(r.who.join(", "))}${r.m.days && r.m.days.length ? " · " + r.m.days.map(d => DAYNAMES[d].slice(0, 2)).join(", ") : ""}</span></td><td class="n">${fmt(r.n)}</td><td class="n"><input class="inv" type="number" min="0" id="finv-${r.id}" data-inv="${r.id}" value="${r.h}" aria-label="${esc(r.m.n)} vorhanden"></td><td class="n ${r.miss ? "miss" : "have"}">${r.miss ? fmt(r.miss) : "✓"}</td></tr>`).join("")}</tbody></table></div></details>`; }).join("") : '<p class="note">Alle Ziele sind schon erreicht.</p>'}
+    <p class="note" style="margin:0">Spalten: brauchst · hast (eintragen) · fehlt. Resin ist grob geschätzt (Talentbücher, Bosse, EXP), ohne Gegner-Drops und Wochenbosse.</p>`
+    : '<p class="note">Füge Charaktere hinzu. Die Liste zählt alle Materialien zusammen und sagt dir, was du heute farmen kannst. Das Ziel wird aus dem Guide vorgeschlagen (Level 90, wichtige Talente auf 8).</p>'}</div>`;
+}
+
+/* ---------- Schnellsuche ---------- */
+const pal = document.getElementById("pal"); let palItems = [], palSel = 0;
+const NICK = { childe: "tartaglia", raiden: "raidenshogun", shogun: "raidenshogun", kazuha: "kaedeharakazuha", ayaka: "kamisatoayaka", ayato: "kamisatoayato", kokomi: "sangonomiyakokomi", itto: "aratakiitto", sara: "kujousara", heizou: "shikanoinheizou", kuki: "kukishinobu", yae: "yaemiko", mizuki: "yumemizukimizuki", reisender: "aether", traveler: "aether", "hu tao": "hutao" };
+const ELWORD = { feuer: "Pyro", wasser: "Hydro", eis: "Cryo", blitz: "Electro", wind: "Anemo", natur: "Dendro", stein: "Geo" };
+function parseFilter(q) {
+  const f = {}; let hit = 0, rest = 0;
+  q.toLowerCase().replace(/[★,.!?]/g, " ").split(/\s+/).filter(Boolean).forEach(w => {
+    if (["zeige", "zeig", "alle", "meine", "mir", "die", "der", "und", "mit", "charaktere", "figuren", "sterne", "stern", "nicht", "noch"].includes(w)) return;
+    const el = ELEMENTS.find(e => e.toLowerCase() === w) || ELWORD[w];
+    const wp = WEAPONS.find(x => w.length >= 4 && x.toLowerCase().startsWith(w.slice(0, 5))) || (/^(speer|lanze)/.test(w) ? "Stangenwaffe" : /^zweih/.test(w) ? "Claymore" : "");
+    if (/^heil/.test(w)) f.role = "Heiler"; else if (/^(schild|shield)/.test(w)) f.role = "Schild"; else if (/^sub/.test(w)) f.role = "Sub-DPS";
+    else if (/^(main|haupt|dps|carry)/.test(w)) f.role = "Main-DPS"; else if (/^(support|buff)/.test(w)) f.role = "Support";
+    else if (el) f.el = el; else if (wp) f.w = wp;
+    else if (/^(ungebaut|unfertig)/.test(w)) f.st = "ungebaut"; else if (/^(gebaut|fertig)/.test(w)) f.st = "gebaut";
+    else if (/^fehl/.test(w)) f.own = "fehlt"; else if (/^(habe|besitz|eigene)/.test(w)) f.own = "habe";
+    else if (w === "5") f.r = "5"; else if (w === "4") f.r = "4"; else { rest++; return; }
+    hit++; });
+  return hit && !rest ? f : null;
+}
+function charMatches(f, c) {
+  const g = gOf(c.k);
+  return (!f.q || (c.n + " " + c.en).toLowerCase().includes(f.q.toLowerCase())) &&
+    (f.own === "alle" || !f.own || (f.own === "habe" ? owned(c.k) : !owned(c.k))) &&
+    (!f.el || c.e === f.el) && (!f.w || c.w === f.w) && (!f.r || c.r === +f.r) && (!f.reg || c.reg === f.reg) &&
+    (!f.role || (g && g.ro.includes(f.role))) && (!f.st || (owned(c.k) && (f.st === "gebaut") === isBuilt(c.k)));
+}
+function filterLabel(f) { return [f.st === "ungebaut" ? "ungebaut" : f.st === "gebaut" ? "gebaut" : "", f.own === "fehlt" ? "fehlt" : f.own === "habe" ? "habe ich" : "", f.r ? f.r + "★" : "", f.el, f.w, f.role].filter(Boolean).join(" · "); }
+function applyFilter(f) { ui.cf = { q: "", own: f.own || (f.st ? "habe" : "alle"), el: f.el || "", w: f.w || "", r: f.r || "", reg: "", sort: "rar", role: f.role || "", st: f.st || "" }; setTab("charaktere"); }
+function palSearch(q) {
+  const out = [], s = q.trim().toLowerCase(), n = normName(q);
+  if (!s) {
+    TABS.forEach(([k, l], i) => out.push({ t: l, sub: "Bereich · Taste " + (i + 1), run: () => setTab(k) }));
+    return out;
+  }
+  const f = parseFilter(q);
+  if (f) out.push({ t: "Filter: " + filterLabel(f), sub: DATA.chars.filter(c => charMatches({ ...f, own: f.own || (f.st ? "habe" : "alle") }, c)).length + " Charaktere anzeigen", run: () => applyFilter(f) });
+  const nk = Object.keys(NICK).find(x => x.startsWith(s));
+  DATA.chars.filter(c => normName(c.n).includes(n) || normName(c.en).includes(n) || (nk && NICK[nk] === c.k)).slice(0, 6)
+    .forEach(c => out.push({ t: c.n, sub: `Charakter · ${c.e} · ${c.w}${owned(c.k) ? " · Lv " + lvOfK(c.k) : " · fehlt"}`, run: () => openChar(c.k) }));
+  GUIDE.teams.map((t, i) => ({ t, i })).filter(x => normName(x.t.n + x.t.typ).includes(n)).slice(0, 4).forEach(x => out.push({ t: x.t.n, sub: "Team-Idee · " + x.t.typ, run: () => loadIdea(x.i) }));
+  DATA.weapons.filter(w => w.r >= 3 && (normName(w.n).includes(n) || normName(w.en).includes(n))).slice(0, 5).forEach(w => out.push({ t: w.n, sub: `Waffe · ${w.r}★ ${w.w}${ownedW(w.k) ? " · hast du" : ""}`, run: () => openWeapon(w.k) }));
+  DATA.artifacts.filter(a => a.r >= 4 && (normName(a.n).includes(n) || normName(a.en).includes(n))).slice(0, 4).forEach(a => out.push({ t: a.n, sub: "Artefakt-Set", run: () => { ui.af = "inv"; ui.aff.set = String(a.id); setTab("artefakte"); } }));
+  TABS.filter(([, l]) => l.toLowerCase().includes(s)).forEach(([k, l]) => out.push({ t: l, sub: "Bereich", run: () => setTab(k) }));
+  return out.slice(0, 14);
+}
+function palRender() {
+  const box = pal.querySelector(".pallist"); if (!box) return;
+  box.innerHTML = palItems.length ? palItems.map((x, i) => `<button class="palitem" data-pali="${i}" aria-selected="${i === palSel}"><b>${esc(x.t)}</b><span class="note">${esc(x.sub)}</span></button>`).join("") : '<p class="note" style="padding:10px">Nichts gefunden.</p>';
+  const cur = box.querySelector('[aria-selected="true"]'); if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
+}
+function openPal() {
+  pal.hidden = false;
+  pal.innerHTML = `<div class="scrim palscrim" data-palclose><div class="palbox" role="dialog" aria-modal="true" aria-label="Schnellsuche">
+    <input type="search" id="palq" placeholder="Suchen: Charakter, Waffe, Set, Team … oder „ungebaute Heiler“" autocomplete="off" aria-label="Schnellsuche">
+    <div class="pallist"></div><p class="note palhelp">↑ ↓ wählen · Enter öffnen · Esc schließen · Tasten 1–9 wechseln den Bereich · ← → blättert im Detail-Fenster</p></div></div>`;
+  palItems = palSearch(""); palSel = 0; palRender(); pal.querySelector("#palq").focus();
+}
+function closePal() { pal.hidden = true; pal.innerHTML = ""; }
+function palRun(i) { const x = palItems[i]; if (!x) return; closePal(); x.run(); }
+pal.addEventListener("input", e => { if (e.target.id === "palq") { palItems = palSearch(e.target.value); palSel = 0; palRender(); } });
+pal.addEventListener("click", e => { const it = e.target.closest("[data-pali]"); if (it) return palRun(+it.dataset.pali); if (e.target.matches("[data-palclose]")) closePal(); });
+pal.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); palRender(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palSel = Math.max(0, palSel - 1); palRender(); }
+  else if (e.key === "Enter") { e.preventDefault(); palRun(palSel); }
+  else if (e.key === "Escape") { e.stopPropagation(); closePal(); }
+});
+document.getElementById("searchBtn").addEventListener("click", openPal);
+function stepChar(d) {
+  const k = layer.dataset.char; if (!k) return;
+  let list = ui.tab === "charaktere" ? DATA.chars.filter(c => charMatches(ui.cf, c)) : ownedChars();
+  list = list.slice().sort((a, b) => (owned(b.k) - owned(a.k)) || b.r - a.r || a.n.localeCompare(b.n));
+  const i = list.findIndex(c => c.k === k); if (i < 0 || !list.length) return;
+  ui.editOpen = false; openChar(list[(i + d + list.length) % list.length].k);
+}
+document.addEventListener("keydown", e => {
+  const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); return pal.hidden ? openPal() : closePal(); }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey || !pal.hidden) return;
+  if (e.key === "/") { e.preventDefault(); return openPal(); }
+  if (layer.dataset.char && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); return stepChar(e.key === "ArrowRight" ? 1 : -1); }
+  if (!layer.innerHTML && /^[1-9]$/.test(e.key) && TABS[+e.key - 1]) setTab(TABS[+e.key - 1][0]);
+});
+
+/* ---------- Bilder: ziehen & ablegen, einfügen, zuordnen ---------- */
+const isImg = f => f && /^image\//.test(f.type);
+function dropTargetChar(e) {
+  if (layer.dataset.char && layer.contains(e.target)) return layer.dataset.char;
+  const el = e.target.closest && e.target.closest("[data-char]"); return el && el !== layer ? el.dataset.char : "";
+}
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { dragDepth++; document.body.classList.add("dragging"); } });
+document.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove("dragging"); });
+document.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+document.addEventListener("drop", async e => {
+  if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  const files = [...e.dataTransfer.files].filter(isImg); if (!files.length) return toast("Das sind keine Bilder");
+  const k = dropTargetChar(e);
+  if (k && files.length === 1) return uploadPic("c:" + k, files[0]);
+  await bulkPics(files); if (ui.tab !== "import") toast(ui.imp.bulk + (ui.unm.length ? " " + ui.unm.length + " nicht erkannt – siehe Daten laden" : ""));
+});
+document.addEventListener("paste", e => {
+  const k = layer.dataset.char; if (!k || !e.clipboardData) return;
+  const f = [...e.clipboardData.files].find(isImg); if (f) { e.preventDefault(); uploadPic("c:" + k, f); }
+});
+function unmatchedBox() {
+  if (!ui.unm.length) return "";
+  const opts = DATA.chars.slice().sort((a, b) => a.n.localeCompare(b.n)).map(c => `<option value="c:${c.k}">${esc(c.n)}</option>`).join("");
+  return `<div class="unm">${ui.unm.map((u, i) => `<div class="unmrow"><img src="${u.url}" alt=""><span class="note" style="min-width:0;overflow-wrap:anywhere">${esc(u.file.name)}</span>
+    <select data-unm="${i}" aria-label="Bild zuordnen"><option value="">Charakter wählen …</option>${opts}</select><button class="btn small" data-unmdel="${i}" aria-label="Bild verwerfen">✕</button></div>`).join("")}</div>`;
+}
+function picStats() { const n = DATA.chars.filter(c => PICS()["c:" + c.k]).length; return `${n} von ${DATA.chars.length} Charakteren haben ein eigenes Bild.`; }
+
+/* ---------- Start ---------- */
+(async function start() {
+  try {
+    DATA = window.KOMPASS_DATA || await (await fetch("data.json")).json();
+  } catch (e) { document.getElementById("loadnote").textContent = "Die Spieldaten konnten nicht geladen werden. Lade die Seite neu."; return; }
+  try { GUIDE = window.KOMPASS_GUIDES || await (await fetch("guides.json")).json(); } catch (e) { GUIDE = { chars: {}, teams: [] }; }
+  DATA.chars.forEach(c => CH[c.k] = c); DATA.weapons.forEach(w => WP[w.k] = w); DATA.artifacts.forEach(s => ART[String(s.id)] = s);
+  try { ui.cview = localStorage.getItem("tk-cview") || ui.cview; ui.wview = localStorage.getItem("tk-wview") || ui.wview; } catch (e) {}
+  setTab(location.hash.slice(1) || "uebersicht");
+  if (!window.claude || !window.claude.use) { dbState = "nicht verfügbar (Seite außerhalb des Claude-Viewers)"; render(); return; }
+  try { db = await window.claude.use("db"); } catch (e) { db = null; }
+  if (!db) { dbState = "nicht verfügbar – Änderungen werden nicht gespeichert"; render(); return; }
+  dbState = "verbunden";
+  let pending = DOCS.length;
+  const timer = setTimeout(() => { if (pending > 0) { dbState = "Daten noch nicht erreichbar – eventuell veraltet"; render(); } }, 10000);
+  DOCS.forEach(name => {
+    let first = true;
+    db.doc("acct/" + name).onSnapshot(snap => {
+      if (snap.exists) { const d = snap.data(); acct[name] = JSON.parse(JSON.stringify(d)); if (/^art\d$/.test(name)) rebuildArts(); }
+      if (first && !snap.metadata.fromCache) { first = false; if (--pending === 0) { clearTimeout(timer); dbState = "verbunden, alles geladen"; } }
+      if (!queue[name] || !queue[name].busy) {
+        if ((layer.dataset.char && name === "chars") || name === "pics") refreshLayer();
+        const ae = document.activeElement; const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA") && main.contains(ae);
+        if (!typing) render(); else renderTabs();
+      }
+    }, err => { dbState = "Fehler beim Laden (" + err.code + ")"; render(); });
+  });
+})();
+</script>
+
+</html>
