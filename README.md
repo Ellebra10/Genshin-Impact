@@ -18,6 +18,7 @@ Private Übersicht für Genshin Impact (Spieldaten 7.2): Charaktere, Waffen, Art
 - Der Knopf "Aktualisieren" (braucht die Claude-App).
 
 ## Bilder
+Das Symbol der Seite (Browser-Tab, gespeicherte Verknüpfung, App) liegt in `icons/`, `favicon.ico` und `manifest.webmanifest`.
 Charaktere, Waffen und Artefakte zeigen automatisch die Spiel-Icons (von enka.network, Ersatzquelle gi.yatta.moe). Die Dateinamen stehen fest in `index.html`; für neue Charaktere oder Waffen dort `ICON_C` bzw. `ICON_W` ergänzen.
 
 ## Eigene Bilder
