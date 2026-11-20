@@ -507,7 +507,7 @@ const PRESETS = {
 function artValue(x, w) { let s = 0; (x.subs || []).forEach(([n, v]) => { if (w[n] && ROLL[n]) s += w[n] * v / ROLL[n]; }); return s; }
 let db = null, canWrite = true, dbState = "lädt";
 const ui = { ti: { q: "", mode: "kann" }, unm: [], ideaNote: null, cview: "raster", wview: "kacheln", imp: { enka: "", good: "", bulk: "", bulkOut: "" }, af: "inv", aff: { q: "", slot: "", set: "", where: "alle", sort: "wert" }, opt: { char: "", preset: "atk", sands: "", goblet: "", circlet: "", set: "", free: true, lv16: false },
-  tab: "uebersicht", cf: { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: "rar", role: "", st: "", g: "" }, wf: { q: "", own: "alle", w: "", r: "" }, plan: { char: "", lv: 90, t: [10, 10, 10] }, team: ["", "", "", ""], afSet: "" };
+  tab: "uebersicht", cf: { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: "rar", role: "", st: "", g: [] }, wf: { q: "", own: "alle", w: "", r: "" }, plan: { char: "", lv: 90, t: [10, 10, 10] }, team: ["", "", "", ""], afSet: "" };
 
 /* ---------- Speichern (eine Schreibung pro Dokument zur Zeit) ---------- */
 const queue = {};
@@ -725,8 +725,8 @@ function vChars() {
   </div>
   <div class="filters"><span class="note">Rolle</span>${ROLES.map(r => `<button class="chip" data-crole="${r}" aria-pressed="${f.role === r}">${r}</button>`).join("")}
     <span class="note" style="margin-left:8px">Stand</span>${[["gebaut", "Gebaut (ab Lv 80)"], ["ungebaut", "Noch nicht gebaut"]].map(([v, l]) => `<button class="chip" data-cst="${v}" aria-pressed="${f.st === v}">${l}</button>`).join("")}
-    <span class="note" style="margin-left:8px">Note</span>${GRADES.map(g => `<button class="chip" data-cgr="${g}" aria-pressed="${f.g === g}" style="color:${GRADECOL[g]};font-weight:800;min-width:38px" title="${g === "S" ? "ab 95 Punkte" : "Build-Note " + g}">${g}</button>`).join("")}
-    ${f.g || f.role || f.st || f.el || f.w || f.r || f.reg || f.q ? '<button class="btn small" id="cfReset">Filter zurücksetzen</button>' : ""}</div>
+    <span class="note" style="margin-left:8px">Note</span>${GRADES.map(g => `<button class="chip" data-cgr="${g}" aria-pressed="${(f.g || []).includes(g)}" style="color:${GRADECOL[g]};font-weight:800;min-width:38px" title="${g === "S" ? "ab 95 Punkte" : "Build-Note " + g}">${g}</button>`).join("")}
+    ${(f.g || []).length || f.role || f.st || f.el || f.w || f.r || f.reg || f.q ? '<button class="btn small" id="cfReset">Filter zurücksetzen</button>' : ""}</div>
   <div class="filters">
     ${ELEMENTS.map(e => `<button class="chip" data-cel="${e}" aria-pressed="${f.el === e}" style="--el:var(${ELVAR[e]})">${sigil(e, "")}${e}</button>`).join("")}
     <select id="cw" aria-label="Waffentyp"><option value="">Alle Waffen</option>${WEAPONS.map(w => `<option ${f.w === w ? "selected" : ""}>${w}</option>`).join("")}</select>
@@ -1679,8 +1679,8 @@ main.addEventListener("click", e => {
   const wv = t.closest("[data-wview]"); if (wv) { ui.wview = wv.dataset.wview; try { localStorage.setItem("tk-wview", ui.wview); } catch (err) {} return render(); }
   const cro = t.closest("[data-crole]"); if (cro) { ui.cf.role = ui.cf.role === cro.dataset.crole ? "" : cro.dataset.crole; return render(); }
   const cst = t.closest("[data-cst]"); if (cst) { ui.cf.st = ui.cf.st === cst.dataset.cst ? "" : cst.dataset.cst; if (ui.cf.st) ui.cf.own = "habe"; return render(); }
-  const cgr = t.closest("[data-cgr]"); if (cgr) { ui.cf.g = ui.cf.g === cgr.dataset.cgr ? "" : cgr.dataset.cgr; if (ui.cf.g) ui.cf.own = "habe"; return render(); }
-  if (t.closest("#cfReset")) { ui.cf = { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: ui.cf.sort, role: "", st: "", g: "" }; return render(); }
+  const cgr = t.closest("[data-cgr]"); if (cgr) { const v = cgr.dataset.cgr, g = ui.cf.g = Array.isArray(ui.cf.g) ? ui.cf.g : []; const i = g.indexOf(v); if (i >= 0) g.splice(i, 1); else g.push(v); if (g.length) ui.cf.own = "habe"; return render(); }
+  if (t.closest("#cfReset")) { ui.cf = { q: "", own: "alle", el: "", w: "", r: "", reg: "", sort: ui.cf.sort, role: "", st: "", g: [] }; return render(); }
   const tid = t.closest("[data-tidea]"); if (tid) return loadIdea(+tid.dataset.tidea);
   const tim = t.closest("[data-timode]"); if (tim) { ui.ti.mode = tim.dataset.timode; return render(); }
   if (t.closest("#farmAddBtn")) { const k = document.getElementById("farmAdd").value; if (!k) return toast("Erst einen Charakter wählen"); acct.farm.list = acct.farm.list || []; acct.farm.list.push(farmDefault(k)); save("farm"); return render(); }
@@ -1900,7 +1900,7 @@ function charMatches(f, c) {
     (f.own === "alle" || !f.own || (f.own === "habe" ? owned(c.k) : !owned(c.k))) &&
     (!f.el || c.e === f.el) && (!f.w || c.w === f.w) && (!f.r || c.r === +f.r) && (!f.reg || c.reg === f.reg) &&
     (!f.role || (g && g.ro.includes(f.role))) && (!f.st || (owned(c.k) && (f.st === "gebaut") === isBuilt(c.k))) &&
-    (!f.g || gradeOf(c) === f.g);
+    (!(f.g || []).length || [].concat(f.g).includes(gradeOf(c)));
 }
 /** Build-Note eines eigenen Charakters (S, A, B, C, D) oder "" ohne Daten */
 function gradeOf(c) {
@@ -1908,7 +1908,7 @@ function gradeOf(c) {
   return a && a.own && (a.lv || a.st) ? buildCheck(c, a).grade : "";
 }
 function filterLabel(f) { return [f.st === "ungebaut" ? "ungebaut" : f.st === "gebaut" ? "gebaut" : "", f.own === "fehlt" ? "fehlt" : f.own === "habe" ? "habe ich" : "", f.r ? f.r + "★" : "", f.el, f.w, f.role].filter(Boolean).join(" · "); }
-function applyFilter(f) { ui.cf = { q: "", own: f.own || (f.st ? "habe" : "alle"), el: f.el || "", w: f.w || "", r: f.r || "", reg: "", sort: "rar", role: f.role || "", st: f.st || "", g: f.g || "" }; setTab("charaktere"); }
+function applyFilter(f) { ui.cf = { q: "", own: f.own || (f.st ? "habe" : "alle"), el: f.el || "", w: f.w || "", r: f.r || "", reg: "", sort: "rar", role: f.role || "", st: f.st || "", g: [].concat(f.g || []) }; setTab("charaktere"); }
 function palSearch(q) {
   const out = [], s = q.trim().toLowerCase(), n = normName(q);
   if (!s) {
